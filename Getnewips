@@ -1,0 +1,49 @@
+function Get-AvailablePrivateIP {
+    param (
+        [string]$VNetName,
+        [string]$SubnetName,
+        [string]$ResourceGroupName
+    )
+
+    # Get the full CIDR range of the VNet
+    $vnet = Get-AzVirtualNetwork -Name $VNetName -ResourceGroupName $ResourceGroupName
+    if (-not $vnet) {
+        Write-Error "VNet $VNetName not found."
+        return
+    }
+    
+    # Get subnet details
+    $subnet = $vnet.Subnets | Where-Object { $_.Name -eq $SubnetName }
+    if (-not $subnet) {
+        Write-Error "Subnet $SubnetName not found in VNet $VNetName."
+        return
+    }
+    
+    $cidr = $subnet.AddressPrefix  # CIDR of the subnet
+    Write-Output "Subnet CIDR: $cidr"
+
+    # Get used IPs in the subnet
+    $usedIps = Get-AzNetworkInterface | Where-Object {
+        $_.IpConfigurations[0].Subnet.Id -eq $subnet.Id
+    } | ForEach-Object { $_.IpConfigurations[0].PrivateIpAddress }
+
+    Write-Output "Used IPs: $usedIps"
+
+    # Get available IPs from CIDR
+    $ipRange = (1..254) | ForEach-Object { 
+        ($cidr -replace '/.*', '') -replace '\d+$', $_
+    }
+
+    # Find first available IP
+    $availableIp = $ipRange | Where-Object { $_ -notin $usedIps } | Select-Object -First 1
+
+    if ($availableIp) {
+        Write-Output "Available IP: $availableIp"
+        return $availableIp
+    } else {
+        Write-Error "No available IPs found in the subnet."
+    }
+}
+
+# Example Usage
+Get-AvailablePrivateIP -VNetName "MyVNet" -SubnetName "MySubnet" -ResourceGroupName "MyResourceGroup"
