@@ -1,57 +1,28 @@
-terraform plan -var-file="input.tfvars"
-╷
-│ Error: Missing attribute value
-│
-│   on input.tfvars line 77:
-│   74: backend_address_pools= { {
-│   75:     name         = "be-pool-1"
-│   76:     fqdns        = ["app1.websites.com"]
-│   77:   },
-│
-│ Expected an attribute value, introduced by an equals sign ("=").
-╵
-PS C:\Users\330475\terraform_1.8.3_windows_386\nttdata_subscription_test\rg>
-PS C:\Users\330475\terraform_1.8.3_windows_386\nttdata_subscription_test\rg> 
-PS C:\Users\330475\terraform_1.8.3_windows_386\nttdata_subscription_test\rg>
-PS C:\Users\330475\terraform_1.8.3_windows_386\nttdata_subscription_test\rg> terraform plan -var-file="input.tfvars"
-╷
-│ Error: Invalid 'for' expression
-│
-│   on data.tf line 53, in data "azurerm_network_interface" "vm_nics":
-│   51:   for_each = {
-│   52:     for gw_key, gw in var.AppGateway :
-│   53:       for vm_pool_key, vm_names in gw.backend_pools_vm :
-│   54:         for vm in vm_names :
-│   55:         "${gw_key}_${vm}" => {
-│   56:           name                = gw.backend_vm_nic
-│   57:           resource_group_name = gw.backend_vm_rg
-│   58:         }
-│   59:   }
-│
-│ Key expression is required when building an object.
-╵
-╷
-│ Error: Invalid 'for' expression
-│
-│   on data.tf line 53, in data "azurerm_network_interface" "vm_nics":
-│   51:   for_each = {
-│   52:     for gw_key, gw in var.AppGateway :
-│   53:       for vm_pool_key, vm_names in gw.backend_pools_vm :
-│
-│ Extra characters after the end of the 'for' expression.
-╵
-╷
-│ Error: Invalid 'for' expression
-│
-│   on data.tf line 68, in data "azurerm_app_service" "app_services":
-│   66:   for_each = {
-│   67:     for gw_key, gw in var.AppGateway :
-│   68:     for app_pool_key, app_names in gw.backend_pools_appservice :
-│   69:     for app in app_names :
-│   70:     "${gw_key}_${app}" => {
-│   71:       name                = app
-│   72:       resource_group_name = element(split(",", gw.backend_app_service_rg), 0) # or refine this logic if RGs differ
-│   73:     }
-│   74:   }
-│
-│ Key expression is required when building an object.
+data "azurerm_network_interface" "vm_nics" {
+  for_each = {
+    for gw_key, gw in var.AppGateway :
+    for pool_key, vms in gw.backend_pools_vm :
+    for vm in vms :
+    "${gw_key}_${pool_key}_${vm}" => {
+      name                = gw.backend_vm_nic
+      resource_group_name = gw.backend_vm_rg
+    }
+  }
+
+  name                = each.value.name
+  resource_group_name = each.value.resource_group_name
+}
+data "azurerm_app_service" "app_services" {
+  for_each = {
+    for gw_key, gw in var.AppGateway :
+    for pool_key, apps in gw.backend_pools_appservice :
+    for app in apps :
+    "${gw_key}_${pool_key}_${app}" => {
+      name                = app
+      resource_group_name = gw.backend_app_service_rg
+    }
+  }
+
+  name                = each.value.name
+  resource_group_name = each.value.resource_group_name
+}
