@@ -1,16 +1,30 @@
+$backendPoolsFqdn      = @{}
+$backendPoolsIp        = @{}
+$backendPoolsVm        = @{}
+$backendPoolsAppSvc    = @{}
+
 function Add-Entries {
     param (
         [string]$keyPrefix,
         [string]$csvValues,
-        [hashtable]$backendPools
+        [hashtable]$targetDict
     )
     $i = 1
     foreach ($val in $csvValues.Split(',') | ForEach-Object { $_.Trim() }) {
-        Write-Host "$val"
         if ($val) {
             $key = "{0}_{1}_{2:D3}" -f $backend_pool, $keyPrefix, $i
-            $backendPools[$key] = @($val)
+            $targetDict[$key] = @($val)
             $i++
         }
     }
 }
+
+Add-Entries -keyPrefix "ip"        -csvValues $item.'backend_ips'        -targetDict $backendPoolsIp
+Add-Entries -keyPrefix "fqdn"      -csvValues $item.'backend_fqdns'      -targetDict $backendPoolsFqdn
+Add-Entries -keyPrefix "vm"        -csvValues $item.'backend_vm_name'    -targetDict $backendPoolsVm
+Add-Entries -keyPrefix "appservice"-csvValues $item.'app_service_name'   -targetDict $backendPoolsAppSvc
+
+$appgateway.backend_pools_fqdn       = $backendPoolsFqdn
+$appgateway.backend_pools_ip         = $backendPoolsIp
+$appgateway.backend_pools_vm         = $backendPoolsVm
+$appgateway.backend_pools_appservice = $backendPoolsAppSvc
