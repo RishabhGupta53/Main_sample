@@ -29,3 +29,46 @@ function Build-BackendPools {
 
     return $backend_pools
 }
+
+
+
+172.28.148.188
+Cannot index into a null array.
+At C:\Users\330475\Az_IaaC_Terraform\API_Gateway\Az_IaaC_Terraform\Modules\Blueprint\VM_POC\App-Gateway\AppGatewayNameCalculation.ps1:106 char:21
++                     $backend_pools[$key] = @($val)
++                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (:) [], RuntimeException
+    + FullyQualifiedErrorId : NullArray
+ 
+test.appgateway.com
+Cannot index into a null array.
+At C:\Users\330475\Az_IaaC_Terraform\API_Gateway\Az_IaaC_Terraform\Modules\Blueprint\VM_POC\App-Gateway\AppGatewayNameCalculation.ps1:106 char:21
++                     $backend_pools[$key] = @($val)
++                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (:) [], RuntimeException
+    + FullyQualifiedErrorId : NullArray
+ 
+BBUBRDBUSQLCD01
+Cannot index into a null array.
+At C:\Users\330475\Az_IaaC_Terraform\API_Gateway\Az_IaaC_Terraform\Modules\Blueprint\VM_POC\App-Gateway\AppGatewayNameCalculation.ps1:106 char:21
++                     $backend_pools[$key] = @($val)
++                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (:) [], RuntimeException
+    + FullyQualifiedErrorId : NullArray
+ 
+BBUGBCBUAPSCD01
+Cannot index into a null array.
+At C:\Users\330475\Az_IaaC_Terraform\API_Gateway\Az_IaaC_Terraform\Modules\Blueprint\VM_POC\App-Gateway\AppGatewayNameCalculation.ps1:106 char:21
++                     $backend_pools[$key] = @($val)
++                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (:) [], RuntimeException
+    + FullyQualifiedErrorId : NullArray
+ 
+BBUGBCBUAPSCD02
+Cannot index into a null array.
+At C:\Users\330475\Az_IaaC_Terraform\API_Gateway\Az_IaaC_Terraform\Modules\Blueprint\VM_POC\App-Gateway\AppGatewayNameCalculation.ps1:106 char:21
++                     $backend_pools[$key] = @($val)
++                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (:) [], RuntimeException
+    + FullyQualifiedErrorId : NullArray
+ 
