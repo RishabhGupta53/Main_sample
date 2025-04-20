@@ -1,74 +1,16 @@
-function Build-BackendPools {
+function Add-Entries {
     param (
-        [string]$backend_pool,
-        [hashtable]$item
+        [string]$keyPrefix,
+        [string]$csvValues,
+        [hashtable]$backendPools
     )
-
-    $backend_pools = @{}
-
-    # Helper to build each section
-    function Add-Entries {
-        param (
-            [string]$keyPrefix,
-            [string]$csvValues
-        )
-        $i = 1
-        foreach ($val in $csvValues.Split(',') | ForEach-Object { $_.Trim() }) {
-            if ($val) {
-                $key = "{0}_{1}_{2:D3}" -f $backend_pool, $keyPrefix, $i
-                $backend_pools[$key] = @($val)
-                $i++
-            }
+    $i = 1
+    foreach ($val in $csvValues.Split(',') | ForEach-Object { $_.Trim() }) {
+        Write-Host "$val"
+        if ($val) {
+            $key = "{0}_{1}_{2:D3}" -f $backend_pool, $keyPrefix, $i
+            $backendPools[$key] = @($val)
+            $i++
         }
     }
-
-    Add-Entries -keyPrefix "ip" -csvValues $item.'backend_ips'
-    Add-Entries -keyPrefix "fqdn" -csvValues $item.'backend_fqdns'
-    Add-Entries -keyPrefix "vm" -csvValues $item.'backend_vm_name'
-    Add-Entries -keyPrefix "appservice" -csvValues $item.'app_service_name'
-
-    return $backend_pools
 }
-
-
-
-172.28.148.188
-Cannot index into a null array.
-At C:\Users\330475\Az_IaaC_Terraform\API_Gateway\Az_IaaC_Terraform\Modules\Blueprint\VM_POC\App-Gateway\AppGatewayNameCalculation.ps1:106 char:21
-+                     $backend_pools[$key] = @($val)
-+                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : InvalidOperation: (:) [], RuntimeException
-    + FullyQualifiedErrorId : NullArray
- 
-test.appgateway.com
-Cannot index into a null array.
-At C:\Users\330475\Az_IaaC_Terraform\API_Gateway\Az_IaaC_Terraform\Modules\Blueprint\VM_POC\App-Gateway\AppGatewayNameCalculation.ps1:106 char:21
-+                     $backend_pools[$key] = @($val)
-+                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : InvalidOperation: (:) [], RuntimeException
-    + FullyQualifiedErrorId : NullArray
- 
-BBUBRDBUSQLCD01
-Cannot index into a null array.
-At C:\Users\330475\Az_IaaC_Terraform\API_Gateway\Az_IaaC_Terraform\Modules\Blueprint\VM_POC\App-Gateway\AppGatewayNameCalculation.ps1:106 char:21
-+                     $backend_pools[$key] = @($val)
-+                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : InvalidOperation: (:) [], RuntimeException
-    + FullyQualifiedErrorId : NullArray
- 
-BBUGBCBUAPSCD01
-Cannot index into a null array.
-At C:\Users\330475\Az_IaaC_Terraform\API_Gateway\Az_IaaC_Terraform\Modules\Blueprint\VM_POC\App-Gateway\AppGatewayNameCalculation.ps1:106 char:21
-+                     $backend_pools[$key] = @($val)
-+                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : InvalidOperation: (:) [], RuntimeException
-    + FullyQualifiedErrorId : NullArray
- 
-BBUGBCBUAPSCD02
-Cannot index into a null array.
-At C:\Users\330475\Az_IaaC_Terraform\API_Gateway\Az_IaaC_Terraform\Modules\Blueprint\VM_POC\App-Gateway\AppGatewayNameCalculation.ps1:106 char:21
-+                     $backend_pools[$key] = @($val)
-+                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : InvalidOperation: (:) [], RuntimeException
-    + FullyQualifiedErrorId : NullArray
- 
