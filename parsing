@@ -1,0 +1,312 @@
+param (
+    [string] $SubscriptionId
+)
+
+function CalculateAppGatewayName
+{
+    Set-Location -Path ".\Modules\Blueprint\VM_POC"
+    $AppMetaDataJson = Get-Content ".\InitModule\AppMetadata.json" -Raw | ConvertFrom-Json
+    $AppGatewayJson  = Get-Content ".\InitModule\AppGateway.json" -Raw | ConvertFrom-Json
+    $AG_Map = New-Object System.Collections.Generic.Dictionary"[String,object]"
+    $count = 0
+
+    $Tags_Array = $AppMetaDataJson | Select-Object -Property Resource_Description, CCoE_ID_Number, Application_Name, Entity, Organization, Change_Ticket, Launch_Date, Deploy_Type -First 1 |  ConvertTo-Json -Depth 100
+    $Application_Name = $AppMetaDataJson.Application_Name
+    $Application_Code = $AppMetaDataJson.Application_Code
+    $Cloud_Provider = Get-CloudProvider($AppMetaDataJson.Cloud_Provider)
+    $Region = Get-AzRegion ($AppGatewayJson[0].az_region)
+    $Environment = Get-AzEnvironment($AppMetaDataJson.Environment)
+    $Entity = $AppMetaDataJson.Entity
+    $Type_Code = "PRI"
+    $ResourceGroupName = "rg-" + $Application_Name + "-" + $Entity + "-" + $Region + "-" + $Environment + "-" + $Type_Code
+    $currentDate = Get-Date -Format "dd/MM/yyyy"
+    $backend_pool = "backend_pool"
+    $Resource_Description = $AppGatewayJson[0].Resource_Description
+
+    $AppGatewayJsonTags = $Tags_Array | ConvertFrom-Json
+    $AppGatewayJsonTags | Add-Member -MemberType NoteProperty -Name "App_Criticality" -Value "yes" -Force
+    $AppGatewayJsonTags | Add-Member -MemberType NoteProperty -Name "Resource_Groups" -Value "$ResourceGroupName" -Force
+    $AppGatewayJsonTags | Add-Member -MemberType NoteProperty -Name "Launch_Date" -Value "$currentDate" -Force
+    $AppGatewayJsonTags | Add-Member -MemberType NoteProperty -Name "Resource_Description" -Value "$Resource_Description" -Force
+
+    $Tags_Array = $AppGatewayJsonTags | ConvertTo-Json -Depth 100
+
+    foreach($item in $AppGatewayJson)
+    {
+        $count++
+
+        if($count -gt 10)
+        {
+            $Secuential_Digit = $count
+        }
+        else 
+        {
+            $Secuential_Digit = "0$count"
+        }
+        
+        $appgatewayName = "$Entity" + "$Application_Code" + "AGW" + "$Cloud_Provider" + "$Environment" + "$Secuential_Digit"
+
+        ##appgateway Name Calculation and Maps
+        $appgateway = [appgateway]::new()
+        $appgateway.Resource_Description = $item.'Resource_Description'
+        $appgateway.application_gateway_name = $appgatewayName.ToLower()
+        $appgateway.tier = $item.'tier'
+        $appgateway.capacity_type = $item.'capacity_type'
+        $appgateway.autoscale_min_instance_count = $item.'autoscale_min_instance_count'
+        $appgateway.autoscale_max_instance_count = $item.'autoscale_max_instance_count'
+        $appgateway.manual_instance_count = $item.'manual_instance_count'
+        $appgateway.AZ_Region = $item.'az_region'
+        $appgateway.availability_zone = Convert-into-list $item.'availability_zone'
+        $appgateway.HTTP2 = $item.'HTTP2'
+        $appgateway.vnet = $item.'vnet'
+        $appgateway.vnet_rg = (Get-AzVirtualNetwork -Name $item.'vnet').ResourceGroupName
+        $appgateway.subnet_name = $item.'subnet_name'
+        $appgateway.frontend_ip = $item.'frontend_ip'
+        $appgateway.backend_pool_name = $appgatewayName.ToLower()+'_BEP'
+        $appgateway.backend_ip_required = $item.'backend_ip_required'
+        $appgateway.backend_ips = $item.'backend_ips'
+        $appgateway.backend_fqdns_required = $item.'backend_fqdns_required'
+        $appgateway.backend_fqdns = $item.'backend_fqdns'
+        $appgateway.backend_vm = $item.'backend_vm'  
+        $appgateway.backend_vm_name = $item.'backend_vm_name'
+        $appgateway.backend_vm_nic = $item.'backend_vm_name'+'_nic'
+        $appgateway.backend_vm_rg = (Get-AzVM -Name $item.'backend_vm_name').ResourceGroupName
+        $appgateway.backend_app_service = $item.'backend_app_service'
+        $appgateway.app_service_name = $item.'app_service_name'
+        #$appgateway.backend_app_service_rg = (Get-AzWebApp | Where-Object { $_.Name -eq  $item.'app_service_name' }).ResourceGroup
+        $appgateway.backend_app_service_rg    = 'rg-gbconectedbbu-dev-eus2, rg-gbconectedbbu-dev-eus2'
+        $appgateway.backend_settings_name = $appgatewayName.ToLower()+'_BES'
+        $appgateway.listener_name = $appgatewayName.ToLower()+'_Listener'
+        $appgateway.listener_protocol = $item.'listener_protocol'
+        $appgateway.port = if($appgateway.listener_protocol -eq 'HTTPS') { 443 } else { 80 }
+        #$appgateway.private_subnet = $item.'private_subnet'
+        $appgateway.key_vault_name = $item.'key_vault_name'
+        $appgateway.key_vault_rg = (Get-AzKeyVault -VaultName $item.'key_vault_name').ResourceGroupName
+        $appgateway.hostname = $item.'hostname'
+        $appgateway.rule_name = $appgatewayName.ToLower()+'_Rule'
+        $appgateway.firewall_policy_name = "$Entity" + "$Application_Code" + "WAF" + "$Cloud_Provider" + "$Environment"
+        $appgateway.backend_pool_ip = "$backend_pool" + "_ip"
+        $appgateway.backend_pool_fqdn = "$backend_pool" + "_fqdn"
+        $appgateway.backend_pool_vm = "$backend_pool" + "_vm"
+        $appgateway.backend_pool_appservice = "$backend_pool" + "_appservice"
+        if (($appgateway.frontend_ip -eq 'both') -or ($appgateway.frontend_ip -eq 'private'))  {
+            $appgateway.private_ip_address = Get-PrivateIP -vnet_name $appgateway.'vnet' -private_subnet $appgateway.'subnet_name' -vnet_rg $appgateway.'vnet_rg'
+            Write-host "Private IP Address: $($appgateway.'private_ip_address')"
+        }
+        $AG_Map.Add("AppGateway_$count",$appgateway)
+    }
+    $AppGatewayJson = $AG_Map | ConvertTo-Json -Depth 100
+    $tfVarsFilePath = ".\Configuration\input.tfvars"
+    
+    Add-Content $tfVarsFilePath  "`nAppGateway_tags = $Tags_Array"
+    Add-Content $tfVarsFilePath  "`nAppGateway = $AppGatewayJson"
+}
+
+#Calculate AZ Region based on ESL Input 3 character for the naming convention and tagging#
+function Get-AzRegion ($Region)
+{
+    switch ($Region) 
+    {
+        "Central US"          {"USC";break}
+        "East US"             {"USE";break}
+        "East US 2"           {"USE2";break}
+        "West US 2"           {"USW2";break}
+        "West US"             {"USW";break}
+        "UK South"            {"UKS";break}
+        "UK West"             {"UKW";break}
+        "Australia East"      {"AUE";break}
+        "Australia Southeast" {"AUSE";break}
+        "Brazil South"        {"BRS";break}
+        "Brazil Southeast"    {"BRSE";break}
+        Default               {break}
+    }
+}
+
+#Calculate Environment character based on ESL input
+function Get-AzEnvironment ($Environment)
+{
+    switch ($Environment) 
+    {
+        "Development"       {"D";break}
+        "QualityAssurance"  {"Q";break}
+        "Production"        {"P";break}
+        "DisasterRecovery"  {"R";break}
+        Default             {break}
+    }
+}
+
+#Calculate az location based on ESL input azure real region
+function Set-Az-Location ($Az_Region)
+{
+    switch ($Az_Region) 
+    {
+        "Central US"          {"centralus";break}
+        "East US"             {"eastus";break}
+        "East US 2"           {"eastus2";break}
+        "West US 2"           {"westus2";break}
+        "West US"             {"westus";break}
+        "UK South"            {"uksouth";break}
+        "UK West"             {"ukwest";break}
+        "Australia East"      {"australiaeast";break}
+        "Australia Southeast" {"australiasoutheast";break}
+        "Brazil South"        {"brazilsouth";break}
+        "Brazil Southeast"    {"brazilsoutheast";break}
+        Default               {break}
+    }
+}
+
+function Get-CloudProvider($Provider) 
+{
+    switch ($Provider) 
+    {
+        "Azure"     {"C";break}
+        "Amazon"    {"A";break}
+        "Google"    {"G";break}
+        "Physical"  {"P";break}
+        "Virtual"   {"V";break}
+        Default     {break}
+    }
+}
+
+function Convert-into-list{
+    param (
+        [String]$inputString
+    )
+    if ($InputString -match 'all zones') {
+        $inputString = "1 2 3"
+    }
+    $inputString = $inputString -replace "(zone |and )",""
+    $inputString = $inputString.Trim()
+    $array = $inputString -split ' '
+    return "$($array -join ',')"
+    
+}
+function Get-PrivateIP {
+    param (
+        [String]$vnet_name,
+        [String]$private_subnet,
+        [String]$vnet_rg
+    )
+
+    # Get the full CIDR range of the VNet
+    $vnet = Get-AzVirtualNetwork -Name $vnet_name -ResourceGroupName $vnet_rg
+    if (-not $vnet) {
+        Write-Error "VNet $vnet_name not found."
+        return
+    }
+    
+    # Get subnet details
+    $subnet = $vnet.Subnets | Where-Object { $_.Name -eq $private_subnet }
+    if (-not $subnet) {
+        Write-Error "Subnet $private_subnet not found in VNet $vnet_name."
+        return
+    }
+    
+    $cidr = $subnet.AddressPrefix  # CIDR of the subnet
+    Write-host "Subnet CIDR: $cidr"
+
+    $subnetDetails = Get-AzVirtualNetworkSubnetConfig -ResourceId $subnet.Id
+
+    # Retrieve all application gateways in the subscription
+    $AppGwList = Get-AzApplicationGateway
+    $usedIps = @()
+    foreach ($AppGw in $AppGwList) {
+        $FrontEndIPs = Get-AzApplicationGatewayFrontendIPConfig -ApplicationGateway $AppGw
+        $FrontEndIPs | Where-Object { $_.Subnet.Id -eq $subnetDetails.Id } | ForEach-Object {
+            $usedIps += $_.PrivateIpAddress
+        }
+    }
+
+    $ipRange = Get-IPRangeFromCIDR -CIDR $cidr
+
+    Write-host "IP Range '$ipRange'"
+
+    # Find first available IP
+    $availableIp = $ipRange | Where-Object { $_ -notin $usedIps } | Select-Object -First 1
+
+    if ($availableIp) {
+        Write-host "Available IP: $availableIp"
+        return $availableIp
+    } else {
+        Write-Error "No available IPs found in the subnet."
+    }
+}
+
+# Function to calculate the range of IP addresses from a CIDR block
+function Get-IPRangeFromCIDR {
+    param (
+        [string]$CIDR
+    )
+
+    # Split the CIDR into IP and prefix length
+    $parts = $CIDR.Split('/')
+    $ip = [System.Net.IPAddress]::Parse($parts[0])
+    $prefixLength = [int]$parts[1]
+
+    # Calculate the number of addresses
+    $numberOfAddresses = [math]::Pow(2, 32 - $prefixLength)
+
+    # Convert IP to a 32-bit integer
+    $ipBytes = $ip.GetAddressBytes()
+    [Array]::Reverse($ipBytes)
+    $ipInt = [BitConverter]::ToUInt32($ipBytes, 0)
+
+    # Generate all IP addresses in the range
+    $ipRange = @()
+    for ($i = 5; $i -lt $numberOfAddresses; $i++) {
+        $currentIpInt = $ipInt + $i
+        $currentIpBytes = [BitConverter]::GetBytes($currentIpInt)
+        [Array]::Reverse($currentIpBytes)
+        $currentIp = [System.Net.IPAddress]::new($currentIpBytes)
+        $ipRange += $currentIp.ToString()
+    }
+
+    return $ipRange
+}
+
+class AppGateway
+{
+    [string] $Resource_Description
+    [string] $application_gateway_name
+    [string] $tier
+    [string] $capacity_type
+    [string] $autoscale_min_instance_count
+    [string] $autoscale_max_instance_count
+    [string] $manual_instance_count
+    [string] $az_region
+    [string] $availability_zone
+    [string] $vnet
+    [string] $vnet_rg
+    [string] $subnet_name
+    [string] $frontend_ip
+    [string] $HTTP2
+    [string] $backend_pool_name
+    [string] $backend_ip_required
+    [string] $backend_ips
+    [string] $backend_fqdns_required
+    [string] $backend_fqdns
+    [string] $backend_vm
+    [string] $backend_vm_name
+    [string] $backend_vm_rg
+    [string] $backend_vm_nic
+    [string] $backend_app_service
+    [string] $app_service_name
+    [string] $backend_app_service_rg
+    [string] $listener_name
+    [string] $listener_protocol
+    #[string] $private_subnet
+    [string] $key_vault_name
+    [string] $key_vault_rg
+    [string] $hostname
+    [string] $rule_name
+    [string] $backend_settings_name
+    [string] $port
+    [string] $private_ip_address
+    [string] $firewall_policy_name
+    [string] $backend_pool_ip
+    [string] $backend_pool_fqdn
+    [string] $backend_pool_vm
+    [string] $backend_pool_appservice
+}
+
+CalculateAppGatewayName
