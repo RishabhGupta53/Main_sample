@@ -1,0 +1,32 @@
+$backend_pool = "bbu"
+$backendPools = @{}
+
+# Sample inputs (replace with your actual values)
+$appgateway.backend_ips       = "10.0.0.1,10.0.0.2"
+$appgateway.backend_fqdns     = "myapp.domain.com"
+$appgateway.backend_vm_name   = "VM1,VM2"
+$appgateway.app_service_name  = "AppService1,AppService2"
+
+# Helper function to split and add with indexed key
+function Add-BackendPoolEntry {
+    param (
+        [string]$prefix,
+        [string]$value
+    )
+
+    $items = $value -split ',' | ForEach-Object { $_.Trim() }
+    for ($i = 0; $i -lt $items.Count; $i++) {
+        $key = "{0}_{1:D3}" -f $prefix, ($i + 1)
+        $backendPools[$key] = @($items[$i])
+    }
+}
+
+# Populate the backendPools hash table
+Add-BackendPoolEntry "$backend_pool`_ip"         $appgateway.backend_ips
+Add-BackendPoolEntry "$backend_pool`_fqdn"       $appgateway.backend_fqdns
+Add-BackendPoolEntry "$backend_pool`_vm"         $appgateway.backend_vm_name
+Add-BackendPoolEntry "$backend_pool`_appservice" $appgateway.app_service_name
+
+# Convert to JSON and format
+$backendPoolsJson = @{ backend_pools = $backendPools } | ConvertTo-Json -Depth 5
+$backendPoolsJson
