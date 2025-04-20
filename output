@@ -1,28 +1,42 @@
-data "azurerm_network_interface" "vm_nics" {
-  for_each = {
-    for gw_key, gw in var.AppGateway :
-    for pool_key, vms in gw.backend_pools_vm :
-    for vm in vms :
-    "${gw_key}_${pool_key}_${vm}" => {
-      name                = gw.backend_vm_nic
-      resource_group_name = gw.backend_vm_rg
-    }
-  }
-
-  name                = each.value.name
-  resource_group_name = each.value.resource_group_name
-}
-data "azurerm_app_service" "app_services" {
-  for_each = {
-    for gw_key, gw in var.AppGateway :
-    for pool_key, apps in gw.backend_pools_appservice :
-    for app in apps :
-    "${gw_key}_${pool_key}_${app}" => {
-      name                = app
-      resource_group_name = gw.backend_app_service_rg
-    }
-  }
-
-  name                = each.value.name
-  resource_group_name = each.value.resource_group_name
-}
+terraform plan -var-file="input.tfvars"
+╷
+│ Error: Invalid 'for' expression
+│
+│   on data.tf line 53, in data "azurerm_network_interface" "vm_nics":
+│   51:   for_each = {
+│   52:     for gw_key, gw in var.AppGateway :
+│   53:     for pool_key, vms in gw.backend_pools_vm :
+│   54:     for vm in vms :
+│   55:     "${gw_key}_${pool_key}_${vm}" => {
+│   56:       name                = gw.backend_vm_nic
+│   57:       resource_group_name = gw.backend_vm_rg
+│   58:     }
+│   59:   }
+│
+│ Key expression is required when building an object.
+╵
+╷
+│ Error: Invalid 'for' expression
+│
+│   on data.tf line 53, in data "azurerm_network_interface" "vm_nics":
+│   51:   for_each = {
+│   52:     for gw_key, gw in var.AppGateway :
+│   53:     for pool_key, vms in gw.backend_pools_vm :
+│
+│ Extra characters after the end of the 'for' expression.
+╵
+╷
+│ Error: Invalid 'for' expression
+│
+│   on data.tf line 67, in data "azurerm_app_service" "app_services":
+│   65:   for_each = {
+│   66:     for gw_key, gw in var.AppGateway :
+│   67:     for pool_key, apps in gw.backend_pools_appservice :
+│   68:     for app in apps :
+│   69:     "${gw_key}_${pool_key}_${app}" => {
+│   70:       name                = app
+│   71:       resource_group_name = gw.backend_app_service_rg
+│   72:     }
+│   73:   }
+│
+│ Key expression is required when building an object.
