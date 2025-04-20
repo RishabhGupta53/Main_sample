@@ -1,34 +1,31 @@
-$backend_pool = "bbu"
-$backendPools = @{}
-
-# Helper function to split and add with indexed key
-function Add-BackendPoolEntry {
+function Build-BackendPools {
     param (
-        [string]$prefix,
-        [string]$value
+        [string]$backend_pool,
+        [hashtable]$item
     )
 
-    if (![string]::IsNullOrEmpty($value)) {
-        $items = $value -split ',' | ForEach-Object { $_.Trim() }
-        for ($i = 0; $i -lt $items.Count; $i++) {
-            $key = "{0}_{1:D3}" -f $prefix, ($i + 1)
-            $backendPools[$key] = @($items[$i])
+    $backend_pools = @{}
+
+    # Helper to build each section
+    function Add-Entries {
+        param (
+            [string]$keyPrefix,
+            [string]$csvValues
+        )
+        $i = 1
+        foreach ($val in $csvValues.Split(',') | ForEach-Object { $_.Trim() }) {
+            if ($val) {
+                $key = "{0}_{1}_{2:D3}" -f $backend_pool, $keyPrefix, $i
+                $backend_pools[$key] = @($val)
+                $i++
+            }
         }
     }
+
+    Add-Entries -keyPrefix "ip" -csvValues $item.'backend_ips'
+    Add-Entries -keyPrefix "fqdn" -csvValues $item.'backend_fqdns'
+    Add-Entries -keyPrefix "vm" -csvValues $item.'backend_vm_name'
+    Add-Entries -keyPrefix "appservice" -csvValues $item.'app_service_name'
+
+    return $backend_pools
 }
-
-# Populate backendPools
-Add-BackendPoolEntry "$backend_pool`_ip"         $appgateway.backend_ips
-Add-BackendPoolEntry "$backend_pool`_fqdn"       $appgateway.backend_fqdns
-Add-BackendPoolEntry "$backend_pool`_vm"         $appgateway.backend_vm_name
-Add-BackendPoolEntry "$backend_pool`_appservice" $appgateway.app_service_name
-
-# Add backend_pools to the appGateway object
-$appgateway.backend_pools = $backendPools
-
-# Final structure for input.tfvars
-$finalObject = @{ appGateway = $appgateway }
-
-# Convert to JSON and write to file
-$finalJson = $finalObject | ConvertTo-Json -Depth 10
-$finalJson | Out-File -FilePath ".\input.tfvars.json" -Encoding utf8
