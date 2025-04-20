@@ -64,22 +64,28 @@ AppGateway = {
                          "port":  "443",
                          "private_ip_address":  null,
                          "firewall_policy_name":  "CBTAUTO5WAFCD",
-                         "backend_pools":  {
-                                               "bbu_fqdn_001":  [
-                                                                    "test.appgateway.com"
-                                                                ],
-                                               "bbu_appservice_002":  [
-                                                                          "BBUGBCBUAPSCD02"
-                                                                      ],
-                                               "bbu_vm_001":  [
-                                                                  "BBUBRDBUSQLCD01"
-                                                              ],
-                                               "bbu_ip_001":  [
-                                                                  "172.28.148.188"
-                                                              ],
-                                               "bbu_appservice_001":  [
-                                                                          "BBUGBCBUAPSCD01"
-                                                                      ]
-                                           }
+                         "backend_pools_ip":  {
+                                                  "backend_pool_ip_001":  [
+                                                                              "172.28.148.188"
+                                                                          ]
+                                              },
+                         "backend_pools_fqdn":  {
+                                                    "backend_pool_fqdn_001":  [
+                                                                                  "test.appgateway.com"
+                                                                              ]
+                                                },
+                         "backend_pools_vm":  {
+                                                  "backend_pool_vm_001":  [
+                                                                              "BBUBRDBUSQLCD01"
+                                                                          ]
+                                              },
+                         "backend_pools_appservice":  {
+                                                          "backend_pool_appservice_001":  [
+                                                                                              "BBUGBCBUAPSCD01"
+                                                                                          ],
+                                                          "backend_pool_appservice_002":  [
+                                                                                              "BBUGBCBUAPSCD02"
+                                                                                          ]
+                                                      }
                      }
 }
