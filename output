@@ -1,27 +1,112 @@
-dynamic "backend_address_pool" {
-    for_each = merge(
-      each.value.backend_pools_ip != null ? each.value.backend_pools_ip : {},
-      each.value.backend_pools_fqdn != null ? each.value.backend_pools_fqdn : {},
-      each.value.backend_pools_vm != null ? each.value.backend_pools_vm : {},
-      each.value.backend_pools_appservice != null ? each.value.backend_pools_appservice : {}
-    )
+# Separate backend address pool resource
+resource "azurerm_application_gateway_backend_address_pool" "backend_pools" {
+  for_each = {
+    for gw_name, gw in var.AppGateway : "${gw_name}_ip" => {
+      name       = "${gw.backend_pool_name}_ip"
+      addresses  = flatten([
+        for pool_name, ips in gw.backend_pools_ip : [
+          for ip in ips : { ip_address = ip }
+        ]
+      ])
+    } if gw.backend_pools_ip != null
+  }
 
+  name                = each.value.name
+  application_gateway_id = azurerm_application_gateway.agw[split("_", each.key)[0]].id
+
+  dynamic "backend_addresses" {
+    for_each = each.value.addresses
     content {
-      name = backend_address_pool.key
-
-      dynamic "backend_address" {
-        for_each = backend_address_pool.value
-
-        content {
-          ip_address = can(regex("^\\d+\\.\\d+\\.\\d+\\.\\d+$", backend_address.value)) ? backend_address.value : null
-          fqdn       = can(regex("^[a-zA-Z0-9.-]+$", backend_address.value)) && !can(regex("^\\d+\\.\\d+\\.\\d+\\.\\d+$", backend_address.value)) ? (
-            contains(keys(each.value.backend_pools_appservice), backend_address_pool.key) ?
-            data.azurerm_app_service.app_services["${each.key}_${backend_address.value}"].default_site_hostname :
-            contains(keys(each.value.backend_pools_vm), backend_address_pool.key) ?
-            "${backend_address.value}.internal.cloudapp.net" :
-            backend_address.value
-          ) : null
-        }
-      }
+      ip_address = backend_addresses.value.ip_address
     }
   }
+}
+
+# You can repeat the above block for FQDNs
+resource "azurerm_application_gateway_backend_address_pool" "backend_pools_fqdn" {
+  for_each = {
+    for gw_name, gw in var.AppGateway : "${gw_name}_fqdn" => {
+      name       = "${gw.backend_pool_name}_fqdn"
+      addresses  = flatten([
+        for pool_name, fqdns in gw.backend_pools_fqdn : [
+          for fqdn in fqdns : { fqdn = fqdn }
+        ]
+      ])
+    } if gw.backend_pools_fqdn != null
+  }
+
+  name                = each.value.name
+  application_gateway_id = azurerm_application_gateway.agw[split("_", each.key)[0]].id
+
+  dynamic "backend_addresses" {
+    for_each = each.value.addresses
+    content {
+      fqdn = backend_addresses.value.fqdn
+    }
+  }
+}
+
+# Repeat for VMs (you may need to get NIC private IPs from data sources if needed)
+resource "azurerm_application_gateway_backend_address_pool" "backend_pools_vm" {
+  for_each = {
+    for gw_name, gw in var.AppGateway : "${gw_name}_vm" => {
+      name       = "${gw.backend_pool_name}_vm"
+      addresses  = flatten([
+        for pool_name, vms in gw.backend_pools_vm : [
+          for vm in vms : { fqdn = "${vm}.internal.cloudapp.net" } # or get IP from data
+        ]
+      ])
+    } if gw.backend_pools_vm != null
+  }
+
+  name                = each.value.name
+  application_gateway_id = azurerm_application_gateway.agw[split("_", each.key)[0]].id
+
+  dynamic "backend_addresses" {
+    for_each = each.value.addresses
+    content {
+      fqdn = backend_addresses.value.fqdn
+    }
+  }
+}
+
+# Repeat for App Services
+data "azurerm_app_service" "app_services" {
+  for_each = {
+    for gw_name, gw in var.AppGateway : {
+      for pool_name, apps in gw.backend_pools_appservice : 
+        for app in apps : "${gw_name}_${app}" => {
+          name                = app
+          resource_group_name = gw.backend_app_service_rg
+        }
+    } if gw.backend_pools_appservice != null
+  }
+
+  name                = each.value.name
+  resource_group_name = each.value.resource_group_name
+}
+
+resource "azurerm_application_gateway_backend_address_pool" "backend_pools_appservice" {
+  for_each = {
+    for gw_name, gw in var.AppGateway : "${gw_name}_appsvc" => {
+      name       = "${gw.backend_pool_name}_appsvc"
+      addresses  = flatten([
+        for pool_name, apps in gw.backend_pools_appservice : [
+          for app in apps : {
+            fqdn = data.azurerm_app_service.app_services["${gw_name}_${app}"].default_site_hostname
+          }
+        ]
+      ])
+    } if gw.backend_pools_appservice != null
+  }
+
+  name                = each.value.name
+  application_gateway_id = azurerm_application_gateway.agw[split("_", each.key)[0]].id
+
+  dynamic "backend_addresses" {
+    for_each = each.value.addresses
+    content {
+      fqdn = backend_addresses.value.fqdn
+    }
+  }
+}
