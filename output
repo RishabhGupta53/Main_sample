@@ -1,120 +1,140 @@
-# Separate backend address pool resource
-resource "azurerm_application_gateway_backend_address_pool" "backend_pools" {
-  for_each = {
-    for gw_name, gw in var.AppGateway : "${gw_name}_ip" => {
-      name       = "${gw.backend_pool_name}_ip"
-      addresses  = flatten([
-        for pool_name, ips in gw.backend_pools_ip : [
-          for ip in ips : { ip_address = ip }
-        ]
-      ])
-    } if gw.backend_pools_ip != null
-  }
-
-  name                = each.value.name
-  application_gateway_id = azurerm_application_gateway.agw[split("_", each.key)[0]].id
-
-  dynamic "backend_addresses" {
-    for_each = each.value.addresses
-    content {
-      ip_address = backend_addresses.value.ip_address
-    }
-  }
-}
-
-# You can repeat the above block for FQDNs
-resource "azurerm_application_gateway_backend_address_pool" "backend_pools_fqdn" {
-  for_each = {
-    for gw_name, gw in var.AppGateway : "${gw_name}_fqdn" => {
-      name       = "${gw.backend_pool_name}_fqdn"
-      addresses  = flatten([
-        for pool_name, fqdns in gw.backend_pools_fqdn : [
-          for fqdn in fqdns : { fqdn = fqdn }
-        ]
-      ])
-    } if gw.backend_pools_fqdn != null
-  }
-
-  name                = each.value.name
-  application_gateway_id = azurerm_application_gateway.agw[split("_", each.key)[0]].id
-
-  dynamic "backend_addresses" {
-    for_each = each.value.addresses
-    content {
-      fqdn = backend_addresses.value.fqdn
-    }
-  }
-}
-
-# Repeat for VMs (you may need to get NIC private IPs from data sources if needed)
-resource "azurerm_application_gateway_backend_address_pool" "backend_pools_vm" {
-  for_each = {
-    for gw_name, gw in var.AppGateway : "${gw_name}_vm" => {
-      name       = "${gw.backend_pool_name}_vm"
-      addresses  = flatten([
-        for pool_name, vms in gw.backend_pools_vm : [
-          for vm in vms : { fqdn = "${vm}.internal.cloudapp.net" } # or get IP from data
-        ]
-      ])
-    } if gw.backend_pools_vm != null
-  }
-
-  name                = each.value.name
-  application_gateway_id = azurerm_application_gateway.agw[split("_", each.key)[0]].id
-
-  dynamic "backend_addresses" {
-    for_each = each.value.addresses
-    content {
-      fqdn = backend_addresses.value.fqdn
-    }
-  }
-}
-
-# Repeat for App Services
-data "azurerm_app_service" "app_services" {
-  for_each = {
-    for gw_name, gw in var.AppGateway : {
-      for pool_name, apps in gw.backend_pools_appservice : 
-        for app in apps : "${gw_name}_${app}" => {
-          name                = app
-          resource_group_name = gw.backend_app_service_rg
-        }
-    } if gw.backend_pools_appservice != null
-  }
-
-  name                = each.value.name
-  resource_group_name = each.value.resource_group_name
-}
-
-resource "azurerm_application_gateway_backend_address_pool" "backend_pools_appservice" {
-  for_each = {
-    for gw_name, gw in var.AppGateway : "${gw_name}_appsvc" => {
-      name       = "${gw.backend_pool_name}_appsvc"
-      addresses  = flatten([
-        for pool_name, apps in gw.backend_pools_appservice : [
-          for app in apps : {
-            fqdn = data.azurerm_app_service.app_services["${gw_name}_${app}"].default_site_hostname
-          }
-        ]
-      ])
-    } if gw.backend_pools_appservice != null
-  }
-
-  name                = each.value.name
-  application_gateway_id = azurerm_application_gateway.agw[split("_", each.key)[0]].id
-
-  dynamic "backend_addresses" {
-    for_each = each.value.addresses
-    content {
-      fqdn = backend_addresses.value.fqdn
-    }
-  }
-}
-
-
-  backend_address_pools = flatten([
-    for gw_name, gw in var.AppGateway : [
-      azurerm_application_gateway_backend_address_pool.backend_pools[gw_name]
-    ]
-    if gw.backend_pools_ip != null || gw.backend_pools_fqdn != null || gw.backend_pools_vm != null || gw.backend_pools_appservice != null
-  ])
+2025-04-21T13:34:57.7606451Z Error: Invalid reference
+2025-04-21T13:34:57.7606714Z Terraform planned the following actions, but then encountered a problem:
+2025-04-21T13:34:57.7637396Z 
+2025-04-21T13:34:57.7637542Z 
+2025-04-21T13:34:57.7739758Z   on ..\..\..\Service\AppGateway\main.tf line 102, in resource "azurerm_application_gateway" "agw":
+2025-04-21T13:34:57.7740077Z   # module.AppGateway.azurerm_public_ip.public_ip["AppGateway_1"] will be created
+2025-04-21T13:34:57.7754688Z  102:       ip_addresses = value
+2025-04-21T13:34:57.7754928Z   + resource "azurerm_public_ip" "public_ip" {
+2025-04-21T13:34:57.7756185Z 
+2025-04-21T13:34:57.7756378Z       + allocation_method       = "Static"
+2025-04-21T13:34:57.7757458Z A reference to a resource type must be followed by at least one attribute
+2025-04-21T13:34:57.7757704Z       + fqdn                    = (known after apply)
+2025-04-21T13:34:57.7761731Z access, specifying the resource name.
+2025-04-21T13:34:57.7761932Z       + id                      = (known after apply)
+2025-04-21T13:34:57.7790456Z 
+2025-04-21T13:34:57.7790778Z       + idle_timeout_in_minutes = 4
+2025-04-21T13:34:57.7797692Z Error: Invalid reference
+2025-04-21T13:34:57.7797923Z       + ip_address              = (known after apply)
+2025-04-21T13:34:57.7816582Z 
+2025-04-21T13:34:57.7816888Z       + ip_version              = "IPv4"
+2025-04-21T13:34:57.7857089Z   on ..\..\..\Service\AppGateway\main.tf line 111, in resource "azurerm_application_gateway" "agw":
+2025-04-21T13:34:57.7857410Z       + location                = "eastus2"
+2025-04-21T13:34:57.7937504Z  111:       fqdns = value
+2025-04-21T13:34:57.7937716Z       + name                    = "cbtauto5agwcd01_pip"
+2025-04-21T13:34:57.7960619Z 
+2025-04-21T13:34:57.7960976Z       + resource_group_name     = "rg-IaCAutomation5-CB-USE2-D-PRI"
+2025-04-21T13:34:57.7962392Z A reference to a resource type must be followed by at least one attribute
+2025-04-21T13:34:57.7962605Z       + sku                     = "Standard"
+2025-04-21T13:34:57.7962939Z access, specifying the resource name.
+2025-04-21T13:34:57.7963118Z       + sku_tier                = "Regional"
+2025-04-21T13:34:57.7963341Z 
+2025-04-21T13:34:57.7963482Z       + tags                    = {
+2025-04-21T13:34:57.7963797Z Error: Invalid reference
+2025-04-21T13:34:57.7963968Z           + "App_Criticality"      = "yes"
+2025-04-21T13:34:57.7964186Z 
+2025-04-21T13:34:57.7964342Z           + "Application_Name"     = "IaCAutomation5"
+2025-04-21T13:34:57.7964712Z   on ..\..\..\Service\AppGateway\main.tf line 129, in resource "azurerm_application_gateway" "agw":
+2025-04-21T13:34:57.7964929Z           + "CCoE_ID_Number"       = "23-0304"
+2025-04-21T13:34:57.7965304Z  129:       fqdns = [for app in value : data.azurerm_app_service.app_services["${each.key}_${app}"].default_site_hostname]
+2025-04-21T13:34:57.7967748Z           + "Change_Ticket"        = "CHG0052951"
+2025-04-21T13:34:57.7970626Z 
+2025-04-21T13:34:57.7970842Z           + "Deploy_Type"          = "Automated"
+2025-04-21T13:34:57.7971214Z A reference to a resource type must be followed by at least one attribute
+2025-04-21T13:34:57.7971404Z           + "Entity"               = "CB"
+2025-04-21T13:34:57.7971736Z access, specifying the resource name.
+2025-04-21T13:34:57.7971916Z           + "Launch_Date"          = "21/04/2025"
+2025-04-21T13:34:57.7972129Z 
+2025-04-21T13:34:57.7972275Z           + "Organization"         = "CORP"
+2025-04-21T13:34:57.7972575Z Error: Invalid reference
+2025-04-21T13:34:57.7972756Z           + "Resource_Description" = "IaC_Automation_300"
+2025-04-21T13:34:57.7972982Z 
+2025-04-21T13:34:57.7973151Z           + "Resource_Groups"      = "rg-IaCAutomation5-CB-USE2-D-PRI"
+2025-04-21T13:34:57.7973524Z   on ..\..\..\Service\AppGateway\main.tf line 129, in resource "azurerm_application_gateway" "agw":
+2025-04-21T13:34:57.7973748Z         }
+2025-04-21T13:34:57.7974148Z  129:       fqdns = [for app in value : data.azurerm_app_service.app_services["${each.key}_${app}"].default_site_hostname]
+2025-04-21T13:34:57.7974361Z       + zones                   = [
+2025-04-21T13:34:57.7974574Z 
+2025-04-21T13:34:57.7974710Z           + "1",
+2025-04-21T13:34:57.7977065Z A reference to a resource type must be followed by at least one attribute
+2025-04-21T13:34:57.7977310Z           + "2",
+2025-04-21T13:34:57.7977619Z access, specifying the resource name.
+2025-04-21T13:34:57.7977770Z         ]
+2025-04-21T13:34:57.7978080Z     }
+2025-04-21T13:34:57.7978230Z 
+2025-04-21T13:34:57.7978548Z   # module.AppGateway.azurerm_web_application_firewall_policy.firewall_policy["AppGateway_1"] will be created
+2025-04-21T13:34:57.7978911Z   + resource "azurerm_web_application_firewall_policy" "firewall_policy" {
+2025-04-21T13:34:57.7979221Z       + http_listener_ids   = (known after apply)
+2025-04-21T13:34:57.7979508Z       + id                  = (known after apply)
+2025-04-21T13:34:57.7979787Z       + location            = "eastus2"
+2025-04-21T13:34:57.7980047Z       + name                = "CBTAUTO5WAFCD"
+2025-04-21T13:34:57.7980325Z       + path_based_rule_ids = (known after apply)
+2025-04-21T13:34:57.7980624Z       + resource_group_name = "rg-IaCAutomation5-CB-USE2-D-PRI"
+2025-04-21T13:34:57.7980920Z       + tags                = {
+2025-04-21T13:34:57.7981176Z           + "App_Criticality"      = "yes"
+2025-04-21T13:34:57.7981458Z           + "Application_Name"     = "IaCAutomation5"
+2025-04-21T13:34:57.7981728Z           + "CCoE_ID_Number"       = "23-0304"
+2025-04-21T13:34:57.7981994Z           + "Change_Ticket"        = "CHG0052951"
+2025-04-21T13:34:57.7982259Z           + "Deploy_Type"          = "Automated"
+2025-04-21T13:34:57.7982691Z           + "Entity"               = "CB"
+2025-04-21T13:34:57.7982989Z           + "Launch_Date"          = "21/04/2025"
+2025-04-21T13:34:57.7983269Z           + "Organization"         = "CORP"
+2025-04-21T13:34:57.7983567Z           + "Resource_Description" = "IaC_Automation_300"
+2025-04-21T13:34:57.7983881Z           + "Resource_Groups"      = "rg-IaCAutomation5-CB-USE2-D-PRI"
+2025-04-21T13:34:57.7984140Z         }
+2025-04-21T13:34:57.7984288Z 
+2025-04-21T13:34:57.7984533Z       + managed_rules {
+2025-04-21T13:34:57.7984792Z           + managed_rule_set {
+2025-04-21T13:34:57.7985044Z               + type    = "OWASP"
+2025-04-21T13:34:57.7985293Z               + version = "3.2"
+2025-04-21T13:34:57.7985527Z             }
+2025-04-21T13:34:57.7985754Z         }
+2025-04-21T13:34:57.7985899Z 
+2025-04-21T13:34:57.7986137Z       + policy_settings {
+2025-04-21T13:34:57.7986389Z           + enabled                     = true
+2025-04-21T13:34:57.7986861Z           + file_upload_limit_in_mb     = 100
+2025-04-21T13:34:57.7987154Z           + max_request_body_size_in_kb = 128
+2025-04-21T13:34:57.7991857Z           + mode                        = "Prevention"
+2025-04-21T13:34:57.7992132Z           + request_body_check          = true
+2025-04-21T13:34:57.7993207Z         }
+2025-04-21T13:34:57.7994287Z     }
+2025-04-21T13:34:57.7994711Z 
+2025-04-21T13:34:57.7995512Z   # module.resource_group.azurerm_resource_group.rg will be created
+2025-04-21T13:34:57.7997352Z   + resource "azurerm_resource_group" "rg" {
+2025-04-21T13:34:57.8004008Z       + id       = (known after apply)
+2025-04-21T13:34:57.8004405Z       + location = "eastus2"
+2025-04-21T13:34:57.8008427Z       + name     = "rg-IaCAutomation5-CB-USE2-D-PRI"
+2025-04-21T13:34:57.8008942Z       + tags     = {
+2025-04-21T13:34:57.8009509Z           + "Application_Name"              = "IaCAutomation5"
+2025-04-21T13:34:57.8009842Z           + "Application_Owner"             = "alberto.gonzalez06@grupobimbo.com"
+2025-04-21T13:34:57.8010225Z           + "Application_Technical_Contact" = "balwant.singh@gbsupport.net"
+2025-04-21T13:34:57.8010580Z           + "Business_ProjectManager"       = "Leo Rajapakse <leo.rajapakse@grupobimbo.com>"
+2025-04-21T13:34:57.8010897Z           + "CCoE_Architect"                = "Balwant Singh"
+2025-04-21T13:34:57.8011586Z           + "CCoE_Cloud_Planning_Manager"   = "Mario Alberto González Vallejo"
+2025-04-21T13:34:57.8012375Z           + "CCoE_ID_Number"                = "23-0304"
+2025-04-21T13:34:57.8012675Z           + "DR_HA"                         = "N/A"
+2025-04-21T13:34:57.8014912Z           + "Distribution_List"             = "CCOEArchitecture@gbconnect.onmicrosoft.com"
+2025-04-21T13:34:57.8015117Z           + "Entity"                        = "CB"
+2025-04-21T13:34:57.8015256Z         }
+2025-04-21T13:34:57.8015391Z     }
+2025-04-21T13:34:57.8015440Z 
+2025-04-21T13:34:57.8015594Z Plan: 3 to add, 0 to change, 0 to destroy.
+2025-04-21T13:34:57.8015681Z 
+2025-04-21T13:34:57.8015823Z Warning: Deprecated Resource
+2025-04-21T13:34:57.8015898Z 
+2025-04-21T13:34:57.8016072Z   with module.AppGateway.data.azurerm_app_service.app_services,
+2025-04-21T13:34:57.8016330Z   on ..\..\..\Service\AppGateway\data.tf line 71, in data "azurerm_app_service" "app_services":
+2025-04-21T13:34:57.8016553Z   71: data "azurerm_app_service" "app_services" {
+2025-04-21T13:34:57.8016634Z 
+2025-04-21T13:34:57.8016803Z The `azurerm_app_service` data source has been superseded by the
+2025-04-21T13:34:57.8017024Z `azurerm_linux_function_app` and `azurerm_windows_web_app` data sources.
+2025-04-21T13:34:57.8017250Z Whilst this resource will continue to be available in the 2.x and 3.x
+2025-04-21T13:34:57.8017474Z releases it is feature-frozen for compatibility purposes, will no longer
+2025-04-21T13:34:57.8017700Z receive any updates and will be removed in a future major release of the
+2025-04-21T13:34:57.8017889Z Azure Provider.
+2025-04-21T13:34:57.8017961Z 
+2025-04-21T13:34:57.8018117Z (and 2 more similar warnings elsewhere)
+2025-04-21T13:34:59.0153074Z 
+2025-04-21T13:34:59.0166361Z Error: Cannot apply incomplete plan
+2025-04-21T13:34:59.0172676Z 
+2025-04-21T13:34:59.0173174Z Terraform encountered an error when generating this plan, so it cannot be
