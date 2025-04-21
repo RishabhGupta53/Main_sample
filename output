@@ -1,6 +1,30 @@
-│ Error: Unsupported argument
+ Error: Unsupported block type
 │
-│   on main.tf line 102, in resource "azurerm_application_gateway" "agw":
-│  102:     backend_addresses = [
+│   on main.tf line 99, in resource "azurerm_application_gateway" "agw":
+│   99:     dynamic "backend_addresses" {
 │
-│ An argument named "backend_addresses" is not expected here.
+│ Blocks of type "backend_addresses" are not expected here.
+╵
+╷
+│ Error: Unsupported block type
+│
+│   on main.tf line 114, in resource "azurerm_application_gateway" "agw":
+│  114:     dynamic "backend_addresses" {
+│
+│ Blocks of type "backend_addresses" are not expected here.
+╵
+╷
+│ Error: Unsupported block type
+│
+│   on main.tf line 129, in resource "azurerm_application_gateway" "agw":
+│  129:     dynamic "backend_addresses" {
+│
+│ Blocks of type "backend_addresses" are not expected here.
+╵
+╷
+│ Error: Unsupported block type
+│
+│   on main.tf line 144, in resource "azurerm_application_gateway" "agw":
+│  144:     dynamic "backend_addresses" {
+│
+│ Blocks of type "backend_addresses" are not expected here.
