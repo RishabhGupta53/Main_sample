@@ -63,18 +63,18 @@ function CalculateAppGatewayName
         $appgateway.subnet_name = $item.'subnet_name'
         $appgateway.frontend_ip = $item.'frontend_ip'
         $appgateway.backend_pool_name = $appgatewayName.ToLower()+'_BEP'
-        $appgateway.backend_ip_required = $item.'backend_ip_required'
-        $appgateway.backend_ips = $item.'backend_ips'
-        $appgateway.backend_fqdns_required = $item.'backend_fqdns_required'
-        $appgateway.backend_fqdns = $item.'backend_fqdns'
-        $appgateway.backend_vm = $item.'backend_vm'  
-        $appgateway.backend_vm_name = $item.'backend_vm_name'
-        $appgateway.backend_vm_nic = $item.'backend_vm_name'+'_nic'
-        $appgateway.backend_vm_rg = (Get-AzVM -Name $item.'backend_vm_name').ResourceGroupName
-        $appgateway.backend_app_service = $item.'backend_app_service'
-        $appgateway.app_service_name = $item.'app_service_name'
+        #$appgateway.backend_ip_required = $item.'backend_ip_required'
+        #$appgateway.backend_ips = $item.'backend_ips'
+        #$appgateway.backend_fqdns_required = $item.'backend_fqdns_required'
+        #$appgateway.backend_fqdns = $item.'backend_fqdns'
+        # $appgateway.backend_vm = $item.'backend_vm'  
+        # $appgateway.backend_vm_name = $item.'backend_vm_name'
+        # $appgateway.backend_vm_nic = $item.'backend_vm_name'+'_nic'
+        #$appgateway.backend_vm_rg = (Get-AzVM -Name $item.'backend_vm_name').ResourceGroupName
+        #$appgateway.backend_app_service = $item.'backend_app_service'
+        #$appgateway.app_service_name = $item.'app_service_name'
         #$appgateway.backend_app_service_rg = (Get-AzWebApp | Where-Object { $_.Name -eq  $item.'app_service_name' }).ResourceGroup
-        $appgateway.backend_app_service_rg    = 'rg-gbconectedbbu-dev-eus2, rg-gbconectedbbu-dev-eus2'
+        #$appgateway.backend_app_service_rg    = 'rg-gbconectedbbu-dev-eus2, rg-gbconectedbbu-dev-eus2'
         $appgateway.backend_settings_name = $appgatewayName.ToLower()+'_BES'
         $appgateway.listener_name = $appgatewayName.ToLower()+'_Listener'
         $appgateway.listener_protocol = $item.'listener_protocol'
@@ -85,41 +85,47 @@ function CalculateAppGatewayName
         $appgateway.hostname = $item.'hostname'
         $appgateway.rule_name = $appgatewayName.ToLower()+'_Rule'
         $appgateway.firewall_policy_name = "$Entity" + "$Application_Code" + "WAF" + "$Cloud_Provider" + "$Environment"
-        # $appgateway.backend_pool_ip = "$backend_pool" + "_ip"
-        # $appgateway.backend_pool_fqdn = "$backend_pool" + "_fqdn"
-        # $appgateway.backend_pool_vm = "$backend_pool" + "_vm"
-        # $appgateway.backend_pool_appservice = "$backend_pool" + "_appservice"
-        $backend_pool = "bbu"
-        $backendPools = @{}
+        $backendPoolsFqdn      = @{}
+        $backendPoolsIp        = @{}
+        $backendPoolsVm        = @{}
+        $backendPoolsAppSvc    = @{}
 
-        # Helper to build each section
         function Add-Entries {
             param (
                 [string]$keyPrefix,
-                [string]$csvValues
+                [string]$csvValues,
+                [hashtable]$targetDict
             )
+            Write-Host "$csvValues"
             $i = 1
             foreach ($val in $csvValues.Split(',') | ForEach-Object { $_.Trim() }) {
-                Write-Host "$val"
                 if ($val) {
                     $key = "{0}_{1}_{2:D3}" -f $backend_pool, $keyPrefix, $i
-                    $backend_pools[$key] = @($val)
+                    $targetDict[$key] = @($val)
                     $i++
                 }
             }
         }
-        Add-Entries -keyPrefix "ip" -csvValues $item.'backend_ips'
-        Add-Entries -keyPrefix "fqdn" -csvValues $item.'backend_fqdns'
-        Add-Entries -keyPrefix "vm" -csvValues $item.'backend_vm_name'
-        Add-Entries -keyPrefix "appservice" -csvValues $item.'app_service_name'
-
-        # Populate backendPools
-        # Add-BackendPoolEntry "$backend_pool`_ip"         $appgateway.backend_ips
-        # Add-BackendPoolEntry "$backend_pool`_fqdn"       $appgateway.backend_fqdns
-        # Add-BackendPoolEntry "$backend_pool`_vm"         $appgateway.backend_vm_name
-        # Add-BackendPoolEntry "$backend_pool`_appservice" $appgateway.app_service_name
-
-        $appgateway.backend_pools = $backendPools
+        
+        if ($item.'backend_ip_required' -eq 'true') {
+            Add-Entries -keyPrefix "ip"        -csvValues $item.'backend_ips'        -targetDict $backendPoolsIp
+        }
+        if ($item.'backend_fqdns_required' -eq 'true') {
+            Add-Entries -keyPrefix "fqdn"      -csvValues $item.'backend_fqdns'      -targetDict $backendPoolsFqdn
+        }
+        if ($item.'backend_app_service' -eq 'true') {
+            Add-Entries -keyPrefix "appservice"-csvValues $item.'app_service_name'   -targetDict $backendPoolsAppSvc
+        }
+        Write-Host "$($item.'backend_vm')"
+        if ($item.'backend_vm' -eq 'true'){
+            Add-Entries -keyPrefix "vm"        -csvValues $item.'backend_vm_name'+'_nic'    -targetDict $backendPoolsVm
+        }
+        
+        
+        $appgateway.backend_pools_fqdn       = $backendPoolsFqdn
+        $appgateway.backend_pools_ip         = $backendPoolsIp
+        $appgateway.backend_pools_vm         = $backendPoolsVm
+        $appgateway.backend_pools_appservice = $backendPoolsAppSvc
 
         if (($appgateway.frontend_ip -eq 'both') -or ($appgateway.frontend_ip -eq 'private'))  {
             $appgateway.private_ip_address = Get-PrivateIP -vnet_name $appgateway.'vnet' -private_subnet $appgateway.'subnet_name' -vnet_rg $appgateway.'vnet_rg'
@@ -325,17 +331,17 @@ class AppGateway
     [string] $frontend_ip
     [string] $HTTP2
     [string] $backend_pool_name
-    [string] $backend_ip_required
-    [string] $backend_ips
-    [string] $backend_fqdns_required
-    [string] $backend_fqdns
-    [string] $backend_vm
-    [string] $backend_vm_name
-    [string] $backend_vm_rg
-    [string] $backend_vm_nic
-    [string] $backend_app_service
-    [string] $app_service_name
-    [string] $backend_app_service_rg
+    # [string] $backend_ip_required
+    # [string] $backend_ips
+    # [string] $backend_fqdns_required
+    # [string] $backend_fqdns
+    # [string] $backend_vm
+    # [string] $backend_vm_name
+    # [string] $backend_vm_rg
+    # [string] $backend_vm_nic
+    # [string] $backend_app_service
+    # [string] $app_service_name
+    # [string] $backend_app_service_rg
     [string] $listener_name
     [string] $listener_protocol
     #[string] $private_subnet
@@ -347,11 +353,10 @@ class AppGateway
     [string] $port
     [string] $private_ip_address
     [string] $firewall_policy_name
-    # [string] $backend_pool_ip
-    # [string] $backend_pool_fqdn
-    # [string] $backend_pool_vm
-    # [string] $backend_pool_appservice
-    [hashtable] $backend_pools
+    [hashtable] $backend_pools_ip
+    [hashtable] $backend_pools_fqdn
+    [hashtable] $backend_pools_vm
+    [hashtable] $backend_pools_appservice
 }
 
 CalculateAppGatewayName
