@@ -1,54 +1,6 @@
-# IP address backends
-dynamic "backend_address_pool" {
-  for_each = try(each.value.backend_pools_ip, {})
-  content {
-    name = backend_address_pool.key
-    backend_addresses = [
-      for ip in backend_address_pool.value : {
-        ip_address = ip
-      }
-    ]
-  }
-}
-
-# FQDN backends
-dynamic "backend_address_pool" {
-  for_each = try(each.value.backend_pools_fqdn, {})
-  content {
-    name = backend_address_pool.key
-    backend_addresses = [
-      for fqdn in backend_address_pool.value : {
-        fqdn = fqdn
-      }
-    ]
-  }
-}
-
-# VM NIC IPs
-dynamic "backend_address_pool" {
-  for_each = try(each.value.backend_pools_vm, {})
-  content {
-    name = backend_address_pool.key
-    backend_addresses = [
-      for nic_name in backend_address_pool.value : {
-        ip_address = data.azurerm_network_interface.vm_nics[nic_name].ip_configuration[0].private_ip_address
-      }
-    ]
-  }
-}
-
-# App Service backends
-dynamic "backend_address_pool" {
-  for_each = try(each.value.backend_pools_appservice, {})
-  content {
-    name = backend_address_pool.key
-    backend_addresses = [
-      for app in backend_address_pool.value : {
-        fqdn = try(
-          data.azurerm_windows_web_app.app_services_windows["${each.key}_${backend_address_pool.key}_${app}"].default_hostname,
-          data.azurerm_linux_web_app.app_services_linux["${each.key}_${backend_address_pool.key}_${app}"].default_hostname
-        )
-      }
-    ]
-  }
-}
+│ Error: Unsupported argument
+│
+│   on main.tf line 102, in resource "azurerm_application_gateway" "agw":
+│  102:     backend_addresses = [
+│
+│ An argument named "backend_addresses" is not expected here.
