@@ -94,36 +94,39 @@ resource "azurerm_application_gateway" "agw" {
     ssl_certificate_name           = var.cert_name
   }
 
+  # Backend Pools from IPs
   dynamic "backend_address_pool" {
-    for_each = each.value.backend_ip_required ? [1] : []
+    for_each = try(each.value.backend_pools_ip, {})
     content {
-      name         = each.value.backend_pool_ip
-      ip_addresses = [each.value.backend_ips]
+      name         = key
+      ip_addresses = value
     }
   }
 
-  # Add FQDN Backend Address Pool if backend_fqdns is defined
+  # Backend Pools from FQDNs
   dynamic "backend_address_pool" {
-    for_each = each.value.backend_fqdns_required ? [1] : []
+    for_each = try(each.value.backend_pools_fqdn, {})
     content {
-      name  = each.value.backend_pool_fqdn
-      fqdns = [each.value.backend_fqdns]
+      name  = key
+      fqdns = value
     }
   }
 
+  # Backend Pools from VMs
   dynamic "backend_address_pool" {
-    for_each = each.value.backend_vm ? [1] : []
+    for_each = try(each.value.backend_pools_vm, {})
     content {
-      name         = each.value.backend_pool_vm
-      ip_addresses = [data.azurerm_network_interface.existing_nic[each.key].private_ip_address]
+      name         = key
+      ip_addresses = [for vm in value : data.azurerm_network_interface.vm_nics["${each.key}_${vm}"].private_ip_address]
     }
   }
 
+  # Backend Pools from App Services
   dynamic "backend_address_pool" {
-    for_each = each.value.backend_app_service ? [1] : []
+    for_each = try(each.value.backend_pools_appservice, {})
     content {
-      name  = each.value.backend_pool_appservice
-      fqdns = [data.azurerm_app_service.existing_apps[each.key].default_site_hostname]
+      name  = key
+      fqdns = [for app in value : data.azurerm_app_service.app_services["${each.key}_${app}"].default_site_hostname]
     }
   }
 
