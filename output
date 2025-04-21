@@ -1,15 +1,12 @@
-  backend_address_pool {
-    name = lookup(var.AppGateway["AppGateway_1"], "backend_pool_name")
-    
-    dynamic "backend_addresses" {
-      for_each = merge(
-        lookup(var.AppGateway["AppGateway_1"], "backend_pools_ip"),
-        lookup(var.AppGateway["AppGateway_1"], "backend_pools_fqdn"),
-        lookup(var.AppGateway["AppGateway_1"], "backend_pools_vm"),
-        lookup(var.AppGateway["AppGateway_1"], "backend_pools_appservice")
-      )
-      content {
-        ip_address = backend_addresses.value[0]
-      }
-    }
-  }
+2025-04-21T14:10:22.5356660Z Error: Invalid index
+2025-04-21T14:10:22.5356921Z Terraform planned the following actions, but then encountered a problem:
+2025-04-21T14:10:22.5387479Z 
+2025-04-21T14:10:22.5387684Z 
+2025-04-21T14:10:22.5397240Z   on ..\..\..\Service\AppGateway\main.tf line 129, in resource "azurerm_application_gateway" "agw":
+2025-04-21T14:10:22.5397531Z   # module.AppGateway.azurerm_public_ip.public_ip["AppGateway_1"] will be created
+2025-04-21T14:10:22.5403136Z  129:       fqdns = [for app in backend_address_pool.value : data.azurerm_app_service.app_services["${each.key}_${app}"].default_site_hostname]
+
+2025-04-21T14:10:22.5421061Z The given key does not identify an element in this collection value.
+2025-04-21T14:10:22.5422223Z Error: Invalid index
+2025-04-21T14:10:22.5423283Z   on ..\..\..\Service\AppGateway\main.tf line 129, in resource "azurerm_application_gateway" "agw":
+2025-04-21T14:10:22.5424008Z  129:       fqdns = [for app in backend_address_pool.value : data.azurerm_app_service.app_services["${each.key}_${app}"].default_site_hostname]
