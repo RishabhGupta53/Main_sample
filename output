@@ -110,3 +110,11 @@ resource "azurerm_application_gateway_backend_address_pool" "backend_pools_appse
     }
   }
 }
+
+
+  backend_address_pools = flatten([
+    for gw_name, gw in var.AppGateway : [
+      azurerm_application_gateway_backend_address_pool.backend_pools[gw_name]
+    ]
+    if gw.backend_pools_ip != null || gw.backend_pools_fqdn != null || gw.backend_pools_vm != null || gw.backend_pools_appservice != null
+  ])
