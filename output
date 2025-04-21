@@ -1,62 +1,6 @@
-# IP Address Pool
-dynamic "backend_address_pool" {
-  for_each = try(each.value.backend_pools_ip, {})
-  content {
-    name = backend_address_pool.key
-
-    dynamic "backend_address" {
-      for_each = backend_address_pool.value
-      content {
-        ip_address = backend_address.value
-      }
-    }
-  }
-}
-
-# FQDN Pool
-dynamic "backend_address_pool" {
-  for_each = try(each.value.backend_pools_fqdn, {})
-  content {
-    name = backend_address_pool.key
-
-    dynamic "backend_address" {
-      for_each = backend_address_pool.value
-      content {
-        fqdn = backend_address.value
-      }
-    }
-  }
-}
-
-# VM NIC Pool (with IP from NIC)
-dynamic "backend_address_pool" {
-  for_each = try(each.value.backend_pools_vm, {})
-  content {
-    name = backend_address_pool.key
-
-    dynamic "backend_address" {
-      for_each = backend_address_pool.value
-      content {
-        ip_address = data.azurerm_network_interface.vm_nics[backend_address.value].ip_configuration[0].private_ip_address
-      }
-    }
-  }
-}
-
-# App Service (use FQDNs as backend_address.fqdn)
-dynamic "backend_address_pool" {
-  for_each = try(each.value.backend_pools_appservice, {})
-  content {
-    name = backend_address_pool.key
-
-    dynamic "backend_address" {
-      for_each = backend_address_pool.value
-      content {
-        fqdn = try(
-          data.azurerm_windows_web_app.app_services_windows["${each.key}_${backend_address_pool.key}_${backend_address.value}"].default_hostname,
-          data.azurerm_linux_web_app.app_services_linux["${each.key}_${backend_address_pool.key}_${backend_address.value}"].default_hostname
-        )
-      }
-    }
-  }
-}
+│ Error: Unsupported block type
+│
+│   on main.tf line 103, in resource "azurerm_application_gateway" "agw":
+│  103:     dynamic "backend_address" {
+│
+│ Blocks of type "backend_address" are not expected here.
