@@ -1,43 +1,6 @@
-025-04-21T11:55:30.3120094Z The `azurerm_app_service` data source has been superseded by the
-2025-04-21T11:55:30.3120423Z   on ..\..\..\Service\AppGateway\main.tf line 128, in resource "azurerm_application_gateway" "agw":
-2025-04-21T11:55:30.3120668Z `azurerm_linux_function_app` and `azurerm_windows_web_app` data sources.
-2025-04-21T11:55:30.3120950Z  128:       name  = key
-2025-04-21T11:55:30.3121141Z Whilst this resource will continue to be available in the 2.x and 3.x
-2025-04-21T11:55:30.3121337Z 
-2025-04-21T11:55:30.3121513Z releases it is feature-frozen for compatibility purposes, will no longer
-2025-04-21T11:55:30.3121826Z A reference to a resource type must be followed by at least one attribute
-2025-04-21T11:55:30.3122047Z receive any updates and will be removed in a future major release of the
-2025-04-21T11:55:30.3122844Z access, specifying the resource name.
-2025-04-21T11:55:30.3123015Z Azure Provider.
-2025-04-21T11:55:30.3123091Z 
-2025-04-21T11:55:30.3123322Z (and 2 more similar warnings elsewhere)
-2025-04-21T11:55:30.3134359Z 
-2025-04-21T11:55:30.3134605Z Error: Invalid reference
-2025-04-21T11:55:30.3134730Z 
-2025-04-21T11:55:30.3134980Z   on ..\..\..\Service\AppGateway\main.tf line 128, in resource "azurerm_application_gateway" "agw":
-2025-04-21T11:55:30.3135244Z  128:       name  = key
-2025-04-21T11:55:30.3135362Z 
-2025-04-21T11:55:30.3135596Z A reference to a resource type must be followed by at least one attribute
-2025-04-21T11:55:30.3135859Z access, specifying the resource name.
-2025-04-21T11:55:30.3147583Z 
-2025-04-21T11:55:30.3147820Z Error: Invalid reference
-2025-04-21T11:55:30.3147942Z 
-2025-04-21T11:55:30.3148192Z   on ..\..\..\Service\AppGateway\main.tf line 129, in resource "azurerm_application_gateway" "agw":
-2025-04-21T11:55:30.3148535Z  129:       fqdns = [for app in value : data.azurerm_app_service.app_services["${each.key}_${app}"].default_site_hostname]
-2025-04-21T11:55:30.3150670Z 
-2025-04-21T11:55:30.3150966Z A reference to a resource type must be followed by at least one attribute
-2025-04-21T11:55:30.3151235Z access, specifying the resource name.
-2025-04-21T11:55:30.3160553Z 
-2025-04-21T11:55:30.3161159Z Error: Invalid reference
-2025-04-21T11:55:30.3161456Z 
-2025-04-21T11:55:30.3161748Z   on ..\..\..\Service\AppGateway\main.tf line 129, in resource "azurerm_application_gateway" "agw":
-2025-04-21T11:55:30.3162092Z  129:       fqdns = [for app in value : data.azurerm_app_service.app_services["${each.key}_${app}"].default_site_hostname]
-2025-04-21T11:55:30.3162272Z 
-2025-04-21T11:55:30.3162510Z A reference to a resource type must be followed by at least one attribute
-2025-04-21T11:55:30.3162774Z access, specifying the resource name.
-2025-04-21T11:55:31.6845009Z 
-2025-04-21T11:55:31.6845739Z Error: Cannot apply incomplete plan
-2025-04-21T11:55:31.6845923Z 
-2025-04-21T11:55:31.6846168Z Terraform encountered an error when generating this plan, so it cannot be
-2025-04-21T11:55:31.6846408Z applied.
-2025-04-21T11:55:31.7004336Z 
+│ Error: Unsupported argument
+│
+│   on main.tf line 101, in resource "azurerm_application_gateway" "agw":
+│  101:       backend_addresses = [
+│
+│ An argument named "backend_addresses" is not expected here.
