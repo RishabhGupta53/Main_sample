@@ -1,30 +1,27 @@
- Error: Unsupported block type
-│
-│   on main.tf line 99, in resource "azurerm_application_gateway" "agw":
-│   99:     dynamic "backend_addresses" {
-│
-│ Blocks of type "backend_addresses" are not expected here.
-╵
-╷
-│ Error: Unsupported block type
-│
-│   on main.tf line 114, in resource "azurerm_application_gateway" "agw":
-│  114:     dynamic "backend_addresses" {
-│
-│ Blocks of type "backend_addresses" are not expected here.
-╵
-╷
-│ Error: Unsupported block type
-│
-│   on main.tf line 129, in resource "azurerm_application_gateway" "agw":
-│  129:     dynamic "backend_addresses" {
-│
-│ Blocks of type "backend_addresses" are not expected here.
-╵
-╷
-│ Error: Unsupported block type
-│
-│   on main.tf line 144, in resource "azurerm_application_gateway" "agw":
-│  144:     dynamic "backend_addresses" {
-│
-│ Blocks of type "backend_addresses" are not expected here.
+dynamic "backend_address_pool" {
+    for_each = merge(
+      each.value.backend_pools_ip != null ? each.value.backend_pools_ip : {},
+      each.value.backend_pools_fqdn != null ? each.value.backend_pools_fqdn : {},
+      each.value.backend_pools_vm != null ? each.value.backend_pools_vm : {},
+      each.value.backend_pools_appservice != null ? each.value.backend_pools_appservice : {}
+    )
+
+    content {
+      name = backend_address_pool.key
+
+      dynamic "backend_address" {
+        for_each = backend_address_pool.value
+
+        content {
+          ip_address = can(regex("^\\d+\\.\\d+\\.\\d+\\.\\d+$", backend_address.value)) ? backend_address.value : null
+          fqdn       = can(regex("^[a-zA-Z0-9.-]+$", backend_address.value)) && !can(regex("^\\d+\\.\\d+\\.\\d+\\.\\d+$", backend_address.value)) ? (
+            contains(keys(each.value.backend_pools_appservice), backend_address_pool.key) ?
+            data.azurerm_app_service.app_services["${each.key}_${backend_address.value}"].default_site_hostname :
+            contains(keys(each.value.backend_pools_vm), backend_address_pool.key) ?
+            "${backend_address.value}.internal.cloudapp.net" :
+            backend_address.value
+          ) : null
+        }
+      }
+    }
+  }
