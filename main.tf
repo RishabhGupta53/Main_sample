@@ -1,34 +1,22 @@
-Provider “registry.terraform.io/hashicorp/azurerm” requires explicit
 
-with data.azurerm_app_service.app_services,
 
-configuration. Add a provider block to the root module and configure the
 
-on data.tf line 59, in data “azurerm_app_service” “app_services”:
-
-provider’s required arguments as described in the provider documentation.
-
-59: data “azurerm_app_service” “app_services” {
-
-The azurerm_app_service data source has been superseded by the
-
+The `azurerm_app_service` data source has been superseded by the
 Error: Missing required argument
-
-azurerm_linux_function_app and azurerm_windows_web_app data sources.
+`azurerm_linux_function_app` and `azurerm_windows_web_app` data sources.
 
 Whilst this resource will continue to be available in the 2.x and 3.x
-
-with provider[“registry.terraform.io/hashicorp/azurerm”],
-
+  with provider["registry.terraform.io/hashicorp/azurerm"],
 releases it is feature-frozen for compatibility purposes, will no longer
-
-on  line 0:
-
+  on <empty> line 0:
 receive any updates and will be removed in a future major release of the
-
-(source code not available)
-
+  (source code not available)
 Azure Provider.
+
+The argument "features" is required, but no definition was found.
+
+Error: Cannot apply incomplete plan
+
 
 above is the error, can you update my code?
 
