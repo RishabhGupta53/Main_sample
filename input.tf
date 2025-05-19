@@ -12,7 +12,6 @@
     "Entity_Name":  "Corporativo Bimbo",
     "DR_HA":  "N/A"
 }
-
 Function_app_tags = {
     "CCoE_ID_Number":  "23-0304",
     "Application_Name":  "IaCAutomation",
@@ -63,9 +62,9 @@ FunctionApp = {
                           "Operating_System":  "Linux",
                           "Web_App_Name":  "CBTAUTOFCNCD02",
                           "Publish":  "Code",
-                          "Runtime_Stack":  "java_version",
-                          "Runtime_Stack_verison":  "17",
-                          "tomcatVersion":  "10.0",
+                          "Runtime_Stack":  "php_version",
+                          "Runtime_Stack_verison":  "8.3",
+                          "tomcatVersion":  null,
                           "Linux_Plan":  "testing",
                           "Windows_Plan":  "",
                           "Zone_redundancy":  "",
@@ -92,9 +91,9 @@ FunctionApp = {
                           "Operating_System":  "Linux",
                           "Web_App_Name":  "CBTAUTOFCNCD03",
                           "Publish":  "Code",
-                          "Runtime_Stack":  "java_version",
-                          "Runtime_Stack_verison":  "17",
-                          "tomcatVersion":  "10.0",
+                          "Runtime_Stack":  "python_version",
+                          "Runtime_Stack_verison":  "3.10",
+                          "tomcatVersion":  null,
                           "Linux_Plan":  "testing",
                           "Windows_Plan":  "",
                           "Zone_redundancy":  "",
