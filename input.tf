@@ -12,6 +12,7 @@
     "Entity_Name":  "Corporativo Bimbo",
     "DR_HA":  "N/A"
 }
+
 Function_app_tags = {
     "CCoE_ID_Number":  "23-0304",
     "Application_Name":  "IaCAutomation",
@@ -19,7 +20,7 @@ Function_app_tags = {
     "Organization":  "CORP",
     "CHG_Ticket":  "CHG0052951",
     "Resource_Groups":  "rg-IaCAutomation-CB-USE2-D-PRI",
-    "Launch_Date":  "15/05/2025",
+    "Launch_Date":  "19/05/2025",
     "Resource_Description":  "IaC_Automation_200"
 }
 
@@ -51,16 +52,7 @@ FunctionApp = {
                           "Inbound_subnet":  "",
                           "Enable_Vnet_Integration":  "",
                           "Outbound_subnet":  "",
-                          "Basic_Authentication":  "Enable",
-                          "Azure_Container_Apps_Environment":  "testing",
-                          "Use_quickstart_image":  "",
-                          "Image_type":  "",
-                          "Image_Name":  "",
-                          "Image_registry_login_server":  "",
-                          "Image_registry_user_name":  "",
-                          "Image_registry_password":  "",
-                          "Workload_profile":  "",
-                          "CPU_and_memory":  ""
+                          "Basic_Authentication":  "Enable"
                       },
     "FunctionApp_2":  {
                           "Hosting_plan":  "Functions Premium",
@@ -89,16 +81,7 @@ FunctionApp = {
                           "Inbound_subnet":  "testing",
                           "Enable_Vnet_Integration":  "testing",
                           "Outbound_subnet":  "testing",
-                          "Basic_Authentication":  "Disable",
-                          "Azure_Container_Apps_Environment":  "testing",
-                          "Use_quickstart_image":  "",
-                          "Image_type":  "",
-                          "Image_Name":  "",
-                          "Image_registry_login_server":  "",
-                          "Image_registry_user_name":  "",
-                          "Image_registry_password":  "",
-                          "Workload_profile":  "",
-                          "CPU_and_memory":  ""
+                          "Basic_Authentication":  "Disable"
                       },
     "FunctionApp_3":  {
                           "Hosting_plan":  "App Service",
@@ -127,53 +110,6 @@ FunctionApp = {
                           "Inbound_subnet":  "",
                           "Enable_Vnet_Integration":  "testing",
                           "Outbound_subnet":  "testing",
-                          "Basic_Authentication":  "Disable",
-                          "Azure_Container_Apps_Environment":  "testing",
-                          "Use_quickstart_image":  "",
-                          "Image_type":  "",
-                          "Image_Name":  "",
-                          "Image_registry_login_server":  "",
-                          "Image_registry_user_name":  "",
-                          "Image_registry_password":  "",
-                          "Workload_profile":  "",
-                          "CPU_and_memory":  ""
-                      },
-    "FunctionApp_4":  {
-                          "Hosting_plan":  "Container Apps environment",
-                          "Pricing_Plan":  "",
-                          "AZ_Region":  "East US 2",
-                          "Function_App_Plan_Name":  "CBTAUTOASPCD04",
-                          "Resource_Description":  "IaC_Automation_200",
-                          "Operating_System":  "",
-                          "Web_App_Name":  "CBTAUTOFCNCD04",
-                          "Publish":  "",
-                          "Runtime_Stack":  "",
-                          "Runtime_Stack_verison":  "",
-                          "tomcatVersion":  null,
-                          "Linux_Plan":  "",
-                          "Windows_Plan":  "",
-                          "Zone_redundancy":  "",
-                          "Enable_Application_Insights":  "Yes",
-                          "vnetname":  null,
-                          "vnet_rg":  null,
-                          "Storage_Account_Name":  "testing",
-                          "Diagnostic_Settings":  "Configure",
-                          "Workspace":  "testing",
-                          "Enable_public_access":  "",
-                          "Enable_network_injection":  "",
-                          "Enable_private_endpoints":  "",
-                          "Inbound_subnet":  "",
-                          "Enable_Vnet_Integration":  "",
-                          "Outbound_subnet":  "",
-                          "Basic_Authentication":  "",
-                          "Azure_Container_Apps_Environment":  "",
-                          "Use_quickstart_image":  "no",
-                          "Image_type":  "testing",
-                          "Image_Name":  "",
-                          "Image_registry_login_server":  "testing",
-                          "Image_registry_user_name":  "testing",
-                          "Image_registry_password":  "testing",
-                          "Workload_profile":  "testing",
-                          "CPU_and_memory":  "2 CPU cores, 4 Gi memory"
+                          "Basic_Authentication":  "Disable"
                       }
 }
