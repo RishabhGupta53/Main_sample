@@ -125,3 +125,25 @@ resource "azurerm_function_app" "function_app" {
   }
 }
 
+
+
+
+  dynamic "site_config" {
+    for_each = each.value.Operating_System == "Linux" ? [1] : []
+
+    content {
+      linux_fx_version = "${each.value.Runtime_Stack}|${each.value.Runtime_Stack_verison}"
+      # Add any other Linux-specific site_config settings here
+    }
+  }
+
+  dynamic "site_config" {
+    for_each = each.value.Operating_System == "Windows" ? [1] : []
+
+    content {
+      # For Windows, set windows_fx_version if needed or other settings
+      # For example, if you want to set java version or other runtime:
+      # windows_fx_version = "Java|11"  # adjust as per your input
+      # or leave empty or set other Windows site_config attributes
+    }
+  }
