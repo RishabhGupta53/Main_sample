@@ -1,362 +1,1205 @@
-param (
-    [string] $SubscriptionId
-)
+trigger: none
 
-function CalculateAppGatewayName
-{
-    Set-Location -Path ".\Modules\Blueprint\VM_POC"
-    $AppMetaDataJson = Get-Content ".\InitModule\AppMetadata.json" -Raw | ConvertFrom-Json
-    $AppGatewayJson  = Get-Content ".\InitModule\AppGateway.json" -Raw | ConvertFrom-Json
-    $AG_Map = New-Object System.Collections.Generic.Dictionary"[String,object]"
-    $count = 0
+parameters:
+  - name: FileName
+    type: string
+    default: ''
+  - name: destroyResourceGroup
+    type: boolean
+    default: false
+  - name: destroyStorageAccount
+    type: boolean
+    default: false
+  - name: destroyKeyVault
+    type: boolean
+    default: false
+  - name: destroyFileShare
+    type: boolean
+    default: false
+  - name: destroyWindowsVM
+    type: boolean
+    default: false
+  - name: destroyAppGateway
+    type: boolean
+    default: false
+  - name: destroySQLonVM
+    type: boolean
+    default: false
 
-    $Tags_Array = $AppMetaDataJson | Select-Object -Property Resource_Description, CCoE_ID_Number, Application_Name, Entity, Organization, Change_Ticket, Launch_Date, Deploy_Type -First 1 |  ConvertTo-Json -Depth 100
-    $Application_Name = $AppMetaDataJson.Application_Name
-    $Application_Code = $AppMetaDataJson.Application_Code
-    $Cloud_Provider = Get-CloudProvider($AppMetaDataJson.Cloud_Provider)
-    $Region = Get-AzRegion ($AppGatewayJson[0].az_region)
-    $Environment = Get-AzEnvironment($AppMetaDataJson.Environment)
-    $Entity = $AppMetaDataJson.Entity
-    $Type_Code = "PRI"
-    $ResourceGroupName = "rg-" + $Application_Name + "-" + $Entity + "-" + $Region + "-" + $Environment + "-" + $Type_Code
-    $currentDate = Get-Date -Format "dd/MM/yyyy"
-    $backend_pool = "backend_pool"
-    $Resource_Description = $AppGatewayJson[0].Resource_Description
+variables:
+  - group: "DEV Windows 2"
+  - group: "Windows Test DEV"
+  - name: AZP_AGENT_CLEANUP_PSMODULES_IN_POWERSHELL
+    value: 'true'
+  - name: artifactRoot
+    value: '$(Pipeline.Workspace)/artifact_$(Build.DefinitionName)_$(Build.BuildId)'
+  - name: SubscriptionId    
+    value: '7ab340c8-a0a3-47d7-8044-0ab5d0fa1515'
+  - name: TypeOfParsing
+    value: 'CRF'
 
-    $AppGatewayJsonTags = $Tags_Array | ConvertFrom-Json
-    $AppGatewayJsonTags | Add-Member -MemberType NoteProperty -Name "App_Criticality" -Value "yes" -Force
-    $AppGatewayJsonTags | Add-Member -MemberType NoteProperty -Name "Resource_Groups" -Value "$ResourceGroupName" -Force
-    $AppGatewayJsonTags | Add-Member -MemberType NoteProperty -Name "Launch_Date" -Value "$currentDate" -Force
-    $AppGatewayJsonTags | Add-Member -MemberType NoteProperty -Name "Resource_Description" -Value "$Resource_Description" -Force
+pool:
+  name: IaC_Automation
 
-    $Tags_Array = $AppGatewayJsonTags | ConvertTo-Json -Depth 100
+stages:
 
-    foreach($item in $AppGatewayJson)
-    {
-        $count++
+### STAGE 1: CI  Generate artifact
+- stage: Generate_CI_Artifact
+  displayName: Generate CI Artifact
+  jobs:
+    - job: Generate_Artifact
+      steps:
+        - checkout: self
 
-        if($count -gt 10)
-        {
-            $Secuential_Digit = $count
-        }
-        else 
-        {
-            $Secuential_Digit = "0$count"
-        }
-        
-        $appgatewayName = "$Entity" + "$Application_Code" + "AGW" + "$Cloud_Provider" + "$Environment" + "$Secuential_Digit"
+        - task: AzurePowerShell@5
+          displayName: 'Parse Modules'
+          inputs:
+            azureSubscription: 'GrupoBimbo Development(Terraform)'
+            ScriptPath: '$(Build.SourcesDirectory)/Configuration/InitialProcess/ParsingProccess.ps1'
+            ScriptArguments: '-FileName ${{ parameters.FileName }} -TypeOfParsing $(TypeOfParsing)'
+            azurePowerShellVersion: LatestVersion
+            pwsh: true
 
-        ##appgateway Name Calculation and Maps
-        $appgateway = [appgateway]::new()
-        $appgateway.Resource_Description = $item.'Resource_Description'
-        $appgateway.application_gateway_name = $appgatewayName.ToLower()
-        $appgateway.tier = $item.'tier'
-        $appgateway.capacity_type = $item.'capacity_type'
-        $appgateway.autoscale_min_instance_count = $item.'autoscale_min_instance_count'
-        $appgateway.autoscale_max_instance_count = $item.'autoscale_max_instance_count'
-        $appgateway.manual_instance_count = $item.'manual_instance_count'
-        $appgateway.AZ_Region = $item.'az_region'
-        $appgateway.availability_zone = Convert-into-list $item.'availability_zone'
-        $appgateway.HTTP2 = $item.'HTTP2'
-        $appgateway.vnet = $item.'vnet'
-        $appgateway.vnet_rg = (Get-AzVirtualNetwork -Name $item.'vnet').ResourceGroupName
-        $appgateway.subnet_name = $item.'subnet_name'
-        $appgateway.frontend_ip = $item.'frontend_ip'
-        $appgateway.backend_pool_name = $appgatewayName.ToLower()+'_BEP'
-        #$appgateway.backend_ip_required = $item.'backend_ip_required'
-        #$appgateway.backend_ips = $item.'backend_ips'
-        #$appgateway.backend_fqdns_required = $item.'backend_fqdns_required'
-        #$appgateway.backend_fqdns = $item.'backend_fqdns'
-        # $appgateway.backend_vm = $item.'backend_vm'  
-        # $appgateway.backend_vm_name = $item.'backend_vm_name'
-        # $appgateway.backend_vm_nic = $item.'backend_vm_name'+'_nic'
-        #$appgateway.backend_vm_rg = (Get-AzVM -Name $item.'backend_vm_name').ResourceGroupName
-        #$appgateway.backend_app_service = $item.'backend_app_service'
-        #$appgateway.app_service_name = $item.'app_service_name'
-        #$appgateway.backend_app_service_rg = (Get-AzWebApp | Where-Object { $_.Name -eq  $item.'app_service_name' }).ResourceGroup
-        #$appgateway.backend_app_service_rg    = 'rg-gbconectedbbu-dev-eus2, rg-gbconectedbbu-dev-eus2'
-        $appgateway.backend_settings_name = $appgatewayName.ToLower()+'_BES'
-        $appgateway.listener_name = $appgatewayName.ToLower()+'_Listener'
-        $appgateway.listener_protocol = $item.'listener_protocol'
-        $appgateway.port = if($appgateway.listener_protocol -eq 'HTTPS') { 443 } else { 80 }
-        #$appgateway.private_subnet = $item.'private_subnet'
-        $appgateway.key_vault_name = $item.'key_vault_name'
-        $appgateway.key_vault_rg = (Get-AzKeyVault -VaultName $item.'key_vault_name').ResourceGroupName
-        $appgateway.hostname = $item.'hostname'
-        $appgateway.rule_name = $appgatewayName.ToLower()+'_Rule'
-        $appgateway.firewall_policy_name = "$Entity" + "$Application_Code" + "WAF" + "$Cloud_Provider" + "$Environment"
-        $backendPoolsFqdn      = @{}
-        $backendPoolsIp        = @{}
-        $backendPoolsVm        = @{}
-        $backendPoolsAppSvc    = @{}
+        - task: AzurePowerShell@5
+          displayName: 'Generate TF Vars'
+          inputs:
+            azureSubscription: 'GrupoBimbo Development(Terraform)'
+            ScriptPath: '$(Build.SourcesDirectory)/Configuration/InitialProcess/GenerateTFVars.ps1'
+            ScriptArguments: '-SubscriptionId $(SubscriptionId) -secondary_vnet $(secondary_vnet)'
+            azurePowerShellVersion: LatestVersion
+            pwsh: true
 
-        function Add-Entries {
-            param (
-                [string]$keyPrefix,
-                [string]$csvValues,
-                [hashtable]$targetDict
-            )
-            Write-Host "$csvValues"
-            $i = 1
-            foreach ($val in $csvValues.Split(',') | ForEach-Object { $_.Trim() }) {
-                if ($val) {
-                    $key = "{0}_{1}_{2:D3}" -f $backend_pool, $keyPrefix, $i
-                    $targetDict[$key] = @($val)
-                    $i++
-                }
-            }
-        }
-        
-        if ($item.'backend_ip_required' -eq 'true') {
-            Add-Entries -keyPrefix "ip"        -csvValues $item.'backend_ips'        -targetDict $backendPoolsIp
-        }
-        if ($item.'backend_fqdns_required' -eq 'true') {
-            Add-Entries -keyPrefix "fqdn"      -csvValues $item.'backend_fqdns'      -targetDict $backendPoolsFqdn
-        }
-        if ($item.'backend_app_service' -eq 'true') {
-            Add-Entries -keyPrefix "appservice"-csvValues $item.'app_service_name'   -targetDict $backendPoolsAppSvc
-        }
-        Write-Host "$($item.'backend_vm')"
-        if ($item.'backend_vm' -eq 'true'){
-            Add-Entries -keyPrefix "vm"        -csvValues $item.'backend_vm_name'+'_nic'    -targetDict $backendPoolsVm
-        }
-        
-        
-        $appgateway.backend_pools_fqdn       = $backendPoolsFqdn
-        $appgateway.backend_pools_ip         = $backendPoolsIp
-        $appgateway.backend_pools_vm         = $backendPoolsVm
-        $appgateway.backend_pools_appservice = $backendPoolsAppSvc
+        - task: CopyFiles@2
+          displayName: 'Copy Generate to Artifact Directory'
+          inputs:
+            Contents: | #avoid .git/.terraform folder copy as this could be security issue.
+              **/*
+              !.*/**
+              !.*/.gitignore
+              !.gitignore
+            TargetFolder: '$(build.artifactstagingdirectory)/Terraform' 
+            CleanTargetFolder: true
 
-        if (($appgateway.frontend_ip -eq 'both') -or ($appgateway.frontend_ip -eq 'private'))  {
-            $appgateway.private_ip_address = Get-PrivateIP -vnet_name $appgateway.'vnet' -private_subnet $appgateway.'subnet_name' -vnet_rg $appgateway.'vnet_rg'
-            Write-host "Private IP Address: $($appgateway.'private_ip_address')"
-        }
-        $AG_Map.Add("AppGateway_$count",$appgateway)
-    }
-    $AppGatewayJson = $AG_Map | ConvertTo-Json -Depth 100
-    $tfVarsFilePath = ".\Configuration\input.tfvars"
+        - task: PublishBuildArtifacts@1
+          displayName: 'Publish Artifact'
+          inputs:
+            PathtoPublish: $(Build.ArtifactStagingDirectory)
+            ArtifactName: 'drop_$(Build.BuildId)'
+    # Azure DevOps native job which cleans up all folders like ( s, b, a). Better than manual cli cleaning which can lead to locks / Orphan 
+    - job: clean
+      dependsOn: Generate_Artifact
+      displayName: Clean the Workspace
+      steps:
+      - checkout: none
+      workspace:
+        clean: all
+
+### CD 
+- stage: Init
+  displayName: Determine Az Resources
+  dependsOn: Generate_CI_Artifact
+  jobs:
+    - job: CheckSheets
+      steps:
+        - task: DownloadPipelineArtifact@2
+          inputs:
+            artifact: 'drop_$(Build.BuildId)'
+            path: '$(artifactRoot)'
+
+        - task: PowerShell@2
+          name: SetVars
+          inputs:
+            targetType: 'inline'
+            pwsh: true
+            script: |
+              $jsonPath = "$(artifactRoot)\Terraform\Configuration\InitialProcess\Resources.json"
+              $jsonContent = Get-Content -Path $jsonPath | ConvertFrom-Json
+              $allResources = $jsonContent.ResourceName | Sort-Object -Unique
+
+              $enabledResources = @()
+              foreach ($resource in $allResources) {
+                  Write-Output "##vso[task.setvariable variable=${resource}Enabled;isOutput=true]true"
+                  $enabledResources += $resource
+              }
+
+              # # Always set ASREnabled as output variable (true or false)
+              # if ($allResources -contains 'ASR') {
+              #   Write-Host "##vso[task.setvariable variable=ASREnabled;isOutput=true]true"
+              # } else {
+              #   Write-Host "##vso[task.setvariable variable=ASREnabled;isOutput=true]false"
+              # }
+
+              Write-host ""
+              write-host "======================= Enabled Resources ======================="
+              foreach ($res in $enabledResources) {
+                write-host "$($res)Enabled = true"
+              } 
+              Write-host "==================================================================="
+
+    - job: clean
+      dependsOn: CheckSheets
+      displayName: Clean the Workspace
+      steps:
+      - checkout: none
+      workspace:
+        clean: all
+
+- stage: ResourceGroup
+  dependsOn: Init
+  condition: succeeded()
+  jobs:
+  - job: Create_Resource_Group
+    pool:
+      name: IaC_Automation
     
-    Add-Content $tfVarsFilePath  "`nAppGateway_tags = $Tags_Array"
-    Add-Content $tfVarsFilePath  "`nAppGateway = $AppGatewayJson"
-}
+    steps:
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        artifact: 'drop_$(Build.BuildId)'
+        path: '$(artifactRoot)'
 
-#Calculate AZ Region based on ESL Input 3 character for the naming convention and tagging#
-function Get-AzRegion ($Region)
-{
-    switch ($Region) 
-    {
-        "Central US"          {"USC";break}
-        "East US"             {"USE";break}
-        "East US 2"           {"USE2";break}
-        "West US 2"           {"USW2";break}
-        "West US"             {"USW";break}
-        "UK South"            {"UKS";break}
-        "UK West"             {"UKW";break}
-        "Australia East"      {"AUE";break}
-        "Australia Southeast" {"AUSE";break}
-        "Brazil South"        {"BRS";break}
-        "Brazil Southeast"    {"BRSE";break}
-        Default               {break}
-    }
-}
+    - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+      displayName: 'Install Terraform latest'
 
-#Calculate Environment character based on ESL input
-function Get-AzEnvironment ($Environment)
-{
-    switch ($Environment) 
-    {
-        "Development"       {"D";break}
-        "QualityAssurance"  {"Q";break}
-        "Production"        {"P";break}
-        "DisasterRecovery"  {"R";break}
-        Default             {break}
-    }
-}
+    - task: PowerShell@2
+      displayName: "Create Resource group"
+      inputs:
+        targetType: 'filePath'
+        filePath: '$(artifactRoot)/Terraform/Configuration/CommonFunctions/CreateStateContainer.ps1'
+        arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -TypeOfParsing "crf" -StateName "Resource-Group.tfstate" -TfvarfileName "RG.tfvars" -ServiceTFFolderPath ".\Terraform\Service\ResourceGroup" -DestroyResources ${{ parameters.destroyResourceGroup }} -ServiceName "ResourceGroup"'
+        pwsh: true  
+        workingDirectory: '$(artifactRoot)'
 
-#Calculate az location based on ESL input azure real region
-function Set-Az-Location ($Az_Region)
-{
-    switch ($Az_Region) 
-    {
-        "Central US"          {"centralus";break}
-        "East US"             {"eastus";break}
-        "East US 2"           {"eastus2";break}
-        "West US 2"           {"westus2";break}
-        "West US"             {"westus";break}
-        "UK South"            {"uksouth";break}
-        "UK West"             {"ukwest";break}
-        "Australia East"      {"australiaeast";break}
-        "Australia Southeast" {"australiasoutheast";break}
-        "Brazil South"        {"brazilsouth";break}
-        "Brazil Southeast"    {"brazilsoutheast";break}
-        Default               {break}
-    }
-}
+    - task: PowerShell@2
+      name: SetRGVars
+      displayName: "Extract and Set RG Name and Location"
+      inputs:
+        targetType: 'inline'
+        pwsh: true
+        workingDirectory: '$(artifactRoot)'
+        script: |
+          $tfvarsPath = "$(artifactRoot)/Terraform/Service/ResourceGroup/RG.tfvars"
+          $tfvarsContent = Get-Content $tfvarsPath -Raw
 
-function Get-CloudProvider($Provider) 
-{
-    switch ($Provider) 
-    {
-        "Azure"     {"C";break}
-        "Amazon"    {"A";break}
-        "Google"    {"G";break}
-        "Physical"  {"P";break}
-        "Virtual"   {"V";break}
-        Default     {break}
-    }
-}
+          $rgName = ($tfvarsContent -split "`n" | Where-Object { $_ -match "resource-group-name" }) -replace '.*=\s*"(.*)"', '$1'
+          $location = ($tfvarsContent -split "`n" | Where-Object { $_ -match "region" }) -replace '.*=\s*"(.*)"', '$1'
 
-function Add-BackendPoolEntry {
-    param (
-        [string]$prefix,
-        [string]$value
+          Write-Host "Extracted RG Name: $rgName"
+          Write-Host "Extracted Location: $location"
+
+          Write-Host "##vso[task.setvariable variable=CreatedRGName;isOutput=true]$rgName"
+          Write-Host "##vso[task.setvariable variable=CreatedRGLocation;isOutput=true]$location" 
+  - job: clean
+    dependsOn: Create_Resource_Group
+    displayName: Clean the Workspace
+    steps:
+    - checkout: none
+    workspace:
+      clean: all
+      
+- stage: Budget
+  dependsOn: ResourceGroup
+  condition: and(
+    eq(dependencies.ResourceGroup.result, 'succeeded'),
+    eq(coalesce(dependencies.Init.outputs['CheckSheets.SetVars.BudgetEnabled'], 'false'), 'true')
     )
+  variables:
+    RGName: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGName'] ]
+    RGLocation: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGLocation'] ]
+  jobs:
+    - job: DeployBudget
+      pool:
+        name: IaC_Automation
+      steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'drop_$(Build.BuildId)'
+          path: '$(artifactRoot)'
 
-    $items = $value -split ',' | ForEach-Object { $_.Trim() }
-    for ($i = 0; $i -lt $items.Count; $i++) {
-        $key = "{0}_{1:D3}" -f $prefix, ($i + 1)
-        $backendPools[$key] = @($items[$i])
-    }
-}
-function Convert-into-list{
-    param (
-        [String]$inputString
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+        displayName: 'Install Terraform latest'
+
+      - task: PowerShell@2
+        displayName: "Create Budget"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/CommonFunctions/CreateStateContainer.ps1'
+          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -TypeOfParsing "crf" -StateName "Budget.tfstate" -TfvarfileName "budget.tfvars" -ServiceTFFolderPath ".\Terraform\Service\Budget" -DestroyResources ${{ parameters.destroyResourceGroup }} -ResourceGroup "$(RGName)" -ResourceGroupLocation "$(RGLocation)"'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+    - job: clean
+      dependsOn: DeployBudget
+      displayName: Clean the Workspace
+      steps:
+      - checkout: none
+      workspace:
+        clean: all
+
+- stage: StorageAccount
+  dependsOn: ResourceGroup
+  condition: and(
+    eq(dependencies.ResourceGroup.result, 'succeeded'),
+    eq(coalesce(dependencies.Init.outputs['CheckSheets.SetVars.BlobEnabled'], 'false'), 'true')
     )
-    if ($InputString -match 'all zones') {
-        $inputString = "1 2 3"
-    }
-    $inputString = $inputString -replace "(zone |and )",""
-    $inputString = $inputString.Trim()
-    $array = $inputString -split ' '
-    return "$($array -join ',')"
-    
-}
-function Get-PrivateIP {
-    param (
-        [String]$vnet_name,
-        [String]$private_subnet,
-        [String]$vnet_rg
+  variables:
+    RGName: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGName'] ]
+    RGLocation: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGLocation'] ]
+  jobs:
+    - job: DeployStorageAccount
+      pool:
+        name: IaC_Automation
+      steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'drop_$(Build.BuildId)'
+          path: '$(artifactRoot)' 
+
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+        displayName: 'Install Terraform latest'
+
+      - task: PowerShell@2
+        displayName: "Create Storage Account"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/CommonFunctions/CreateStateContainer.ps1'
+          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -TypeOfParsing "crf" -StateName "Storage-Account.tfstate" -TfvarfileName "Blob.tfvars" -ServiceTFFolderPath ".\Terraform\Service\StorageAccount" -DestroyResources ${{ parameters.destroyResourceGroup }} -ResourceGroup "$(RGName)" -ResourceGroupLocation "$(RGLocation)"'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+
+      - task: PowerShell@2
+        displayName: "A Record Creation"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/StorageAccount_Parsing/BlobARecord.ps1'
+          arguments: '-FileshareDnsZoneName $(FileshareDnsZoneName) -RgDnsZoneName $(RgDnsZoneName) -SubscriptionIdDNSZone $(SubscriptionIdDNSZone) -tenantIdDNSZone $(tenantIdDNSZone) -clientIdDNSZone $(clientIdDNSZone) -secretDNSZone $(secretDNSZone) -SubscriptionId $(Subscription) -ClientId $(ClientId) -secret $(ClientSecret) -tenantId $(Tenant) -StorageDnsZoneName $(StorageDnsZoneName)'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'          
+    - job: clean
+      dependsOn: DeployStorageAccount
+      displayName: Clean the Workspace
+      steps:
+      - checkout: none
+      workspace:
+        clean: all
+
+- stage: KeyVault
+  dependsOn: ResourceGroup
+  condition: and(
+    eq(dependencies.ResourceGroup.result,'succeeded'),
+    eq(coalesce(dependencies.Init.outputs['CheckSheets.SetVars.KeyvaultEnabled'], 'false'), 'true')
     )
+  variables:
+    RGName: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGName'] ]
+    RGLocation: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGLocation'] ]
+  jobs:
+    - job: DeployKeyVault
+      pool:
+        name: IaC_Automation
+      steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'drop_$(Build.BuildId)'
+          path: '$(artifactRoot)'    
 
-    # Get the full CIDR range of the VNet
-    $vnet = Get-AzVirtualNetwork -Name $vnet_name -ResourceGroupName $vnet_rg
-    if (-not $vnet) {
-        Write-Error "VNet $vnet_name not found."
-        return
-    }
-    
-    # Get subnet details
-    $subnet = $vnet.Subnets | Where-Object { $_.Name -eq $private_subnet }
-    if (-not $subnet) {
-        Write-Error "Subnet $private_subnet not found in VNet $vnet_name."
-        return
-    }
-    
-    $cidr = $subnet.AddressPrefix  # CIDR of the subnet
-    Write-host "Subnet CIDR: $cidr"
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+        displayName: 'Install Terraform latest'
 
-    $subnetDetails = Get-AzVirtualNetworkSubnetConfig -ResourceId $subnet.Id
+      - task: PowerShell@2
+        displayName: "Deploy Key Vault"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/CommonFunctions/CreateStateContainer.ps1'
+          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -TypeOfParsing "crf" -StateName "key-vault.tfstate" -TfvarfileName "KV.tfvars" -ServiceTFFolderPath ".\Terraform\Service\KeyVault" -DestroyResources ${{ parameters.destroyResourceGroup }} -ResourceGroup "$(RGName)" -ResourceGroupLocation "$(RGLocation)"'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)' 
+        env:
+          keyvaultDnsZoneName:          $(keyvaultDnsZoneName)
+          RgDnsZoneName:                $(RgDnsZoneName) 
+          SubscriptionIdDNSZone:        $(SubscriptionIdDNSZone)
+          tenantIdDNSZone:              $(tenantIdDNSZone)
+          clientIdDNSZone:              $(clientIdDNSZone)
+          secretDNSZone:                $(secretDNSZone)
+          subscriptionId:               $(Subscription)
+          tenantId:                     $(Tenant)
+          clientId:                     $(clientId)
+          secret:                       $(ClientSecret) 
+    - job: clean
+      dependsOn: DeployKeyVault
+      displayName: Clean the Workspace
+      steps:
+      - checkout: none
+      workspace:
+        clean: all
 
-    # Retrieve all application gateways in the subscription
-    $AppGwList = Get-AzApplicationGateway
-    $usedIps = @()
-    foreach ($AppGw in $AppGwList) {
-        $FrontEndIPs = Get-AzApplicationGatewayFrontendIPConfig -ApplicationGateway $AppGw
-        $FrontEndIPs | Where-Object { $_.Subnet.Id -eq $subnetDetails.Id } | ForEach-Object {
-            $usedIps += $_.PrivateIpAddress
-        }
-    }
-
-    $ipRange = Get-IPRangeFromCIDR -CIDR $cidr
-
-    Write-host "IP Range '$ipRange'"
-
-    # Find first available IP
-    $availableIp = $ipRange | Where-Object { $_ -notin $usedIps } | Select-Object -First 1
-
-    if ($availableIp) {
-        Write-host "Available IP: $availableIp"
-        return $availableIp
-    } else {
-        Write-Error "No available IPs found in the subnet."
-    }
-}
-
-# Function to calculate the range of IP addresses from a CIDR block
-function Get-IPRangeFromCIDR {
-    param (
-        [string]$CIDR
+# Stage 2: File Share
+- stage: FileShare
+  dependsOn: [StorageAccount,ResourceGroup]
+  condition: and(
+    in(dependencies.StorageAccount.result, 'succeeded', 'skipped'),
+    eq(dependencies.ResourceGroup.result,'succeeded'),
+    eq(coalesce(dependencies.Init.outputs['CheckSheets.SetVars.FileshareEnabled'], 'false'), 'true')
     )
+  variables:
+    RGName: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGName'] ]
+    RGLocation: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGLocation'] ]  
+  jobs:
+    - job: DeployFileShare
+      pool:
+        name: IaC_Automation
 
-    # Split the CIDR into IP and prefix length
-    $parts = $CIDR.Split('/')
-    $ip = [System.Net.IPAddress]::Parse($parts[0])
-    $prefixLength = [int]$parts[1]
+      steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'drop_$(Build.BuildId)'
+          path: '$(artifactRoot)'
 
-    # Calculate the number of addresses
-    $numberOfAddresses = [math]::Pow(2, 32 - $prefixLength)
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+        displayName: 'Install Terraform latest'
 
-    # Convert IP to a 32-bit integer
-    $ipBytes = $ip.GetAddressBytes()
-    [Array]::Reverse($ipBytes)
-    $ipInt = [BitConverter]::ToUInt32($ipBytes, 0)
+      - task: PowerShell@2
+        displayName: "Deploy File Share"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/CommonFunctions/CreateStateContainer.ps1'
+          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -TypeOfParsing "crf" -StateName "Fileshare.tfstate" -TfvarfileName "FileShare.tfvars" -ServiceTFFolderPath ".\Terraform\Service\FileShare" -DestroyResources ${{ parameters.destroyResourceGroup }} -ResourceGroup "$(RGName)" -ResourceGroupLocation "$(RGLocation)" -FileshareDnsZoneName "$(FileshareDnsZoneName)" -RgDnsZoneName "$(RgDnsZoneName)" -SubscriptionIdDNSZone "$(SubscriptionIdDNSZone)" -tenantIdDNSZone "$(tenantIdDNSZone)" -clientIdDNSZone "$(clientIdDNSZone)" -secretDNSZone "$(secretDNSZone)" -ServiceName "FileShare" -managedIdentityId $(managedIdentityId)'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+        env:
+          FileshareDnsZoneName:         $(FileshareDnsZoneName)
+          RgDnsZoneName:                $(RgDnsZoneName) 
+          SubscriptionIdDNSZone:        $(SubscriptionIdDNSZone)
+          tenantIdDNSZone:              $(tenantIdDNSZone)
+          clientIdDNSZone:              $(clientIdDNSZone)
+          secretDNSZone:                $(secretDNSZone)
+          subscriptionId:               $(Subscription)
+          tenantId:                     $(Tenant)
+          clientId:                     $(clientId)
+          secret:                       $(ClientSecret)     
+    - job: clean
+      dependsOn: DeployFileShare
+      displayName: Clean the Workspace
+      steps:
+      - checkout: none
+      workspace:
+        clean: all
 
-    # Generate all IP addresses in the range
-    $ipRange = @()
-    for ($i = 5; $i -lt $numberOfAddresses; $i++) {
-        $currentIpInt = $ipInt + $i
-        $currentIpBytes = [BitConverter]::GetBytes($currentIpInt)
-        [Array]::Reverse($currentIpBytes)
-        $currentIp = [System.Net.IPAddress]::new($currentIpBytes)
-        $ipRange += $currentIp.ToString()
-    }
+- stage: SQLonVM
+  dependsOn: [ResourceGroup]
+  condition: and(
+    eq(dependencies.ResourceGroup.result,'succeeded'),
+    eq(coalesce(dependencies.Init.outputs['CheckSheets.SetVars.SQLVMEnabled'], 'false'), 'true')
+    )
+  variables:
+    RGName: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGName'] ]
+    RGLocation: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGLocation'] ]  
+  jobs:
+    - job: DeploySQLonVM
+      pool:
+        name: IaC_Automation
 
-    return $ipRange
-}
+      steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'drop_$(Build.BuildId)'
+          path: '$(artifactRoot)'
+        
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+        displayName: 'Install Terraform latest'
 
-class AppGateway
-{
-    [string] $Resource_Description
-    [string] $application_gateway_name
-    [string] $tier
-    [string] $capacity_type
-    [string] $autoscale_min_instance_count
-    [string] $autoscale_max_instance_count
-    [string] $manual_instance_count
-    [string] $az_region
-    [string] $availability_zone
-    [string] $vnet
-    [string] $vnet_rg
-    [string] $subnet_name
-    [string] $frontend_ip
-    [string] $HTTP2
-    [string] $backend_pool_name
-    # [string] $backend_ip_required
-    # [string] $backend_ips
-    # [string] $backend_fqdns_required
-    # [string] $backend_fqdns
-    # [string] $backend_vm
-    # [string] $backend_vm_name
-    # [string] $backend_vm_rg
-    # [string] $backend_vm_nic
-    # [string] $backend_app_service
-    # [string] $app_service_name
-    # [string] $backend_app_service_rg
-    [string] $listener_name
-    [string] $listener_protocol
-    #[string] $private_subnet
-    [string] $key_vault_name
-    [string] $key_vault_rg
-    [string] $hostname
-    [string] $rule_name
-    [string] $backend_settings_name
-    [string] $port
-    [string] $private_ip_address
-    [string] $firewall_policy_name
-    [hashtable] $backend_pools_ip
-    [hashtable] $backend_pools_fqdn
-    [hashtable] $backend_pools_vm
-    [hashtable] $backend_pools_appservice
-}
+      - task: PowerShell@2
+        displayName: "Deploy SQL on VM"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/CommonFunctions/CreateStateContainer.ps1'
+          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -TypeOfParsing "crf" -StateName "sqlonvm.tfstate" -TfvarfileName "SQLVM.tfvars" -ServiceTFFolderPath ".\Terraform\Service\SQLonVM" -DestroyResources ${{ parameters.destroySQLonVM }} -ResourceGroup "$(RGName)" -ResourceGroupLocation "$(RGLocation)" -SubscriptionIdGoldenImage $(SubscriptionIdGoldenImage) -managedIdentityId $(managedIdentityId) -KvName $(KvName) -ServiceName "sqlonvm"'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
 
-CalculateAppGatewayName
+      - task: PowerShell@2
+        displayName: "Health Check"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/SQLonVM_Parsing/HealthChecks.ps1'
+          arguments: '-storageAccountName $(storageAccountName) -storageAccountKey $(storageAccountKey) -SubscriptionIdState $(SubscriptionIdState) -SubscriptionId $(Subscription) -TypeOfParsing "crf" -StateName "sqlonvm.tfstate" -RG_Name "$(RGName)"'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+
+      - task: PowerShell@2
+        displayName: "Install YAML converter module"
+        inputs:
+          targetType: 'inline'
+          script: |
+            Install-Module -Name powershell-yaml -Force -Repository PSGallery -Scope CurrentUser
+          pwsh: true  
+                                        
+      - task: PowerShell@2
+        displayName: "Calculate Ansible Input & Enable WinRM"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/SQLonVM_Parsing/GenerateAnsibleGroupInput.ps1'
+          arguments: '-storageAccountName $(storageAccountName) -storageAccountKey $(storageAccountKey) -SubscriptionId $(Subscription) -StateName "sqlonvm.tfstate" -TypeOfParsing "crf" -RG_Name "$(RGName)"'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+
+      - task: SSH@0
+        displayName: 'Run shell commands on remote machine'
+        inputs:
+          sshEndpoint: IaCLocalAdminCBTAUTOAPPCP04
+          commands: |
+            touch /tmp/text1
+            echo $date > /tmp/text1
+            echo "Testing SSH Connection from Ansible Server" > /tmp/text1
+        enabled: true   
+
+      - task: CopyFilesOverSSH@0
+        displayName: 'Copy Dinamyc file into Ansible Server'
+        inputs:
+          sshEndpoint: IaCLocalAdminCBTAUTOAPPCP04
+          sourceFolder: '$(artifactRoot)/Terraform/Configuration/SQLonVM_Parsing'
+          contents: '**.yml'
+          targetFolder: '/home/IaCLocalAdmin/ansible/Az_IaaC_Terraform/Master' 
+
+      - task: CopyFilesOverSSH@0
+        displayName: 'Copy hostname file to ansible server'
+        inputs:
+          sshEndpoint: IaCLocalAdminCBTAUTOAPPCP04
+          sourceFolder: '$(artifactRoot)/Terraform/Configuration/InitialProcess'
+          contents: '**.json'
+          targetFolder: '/home/IaCLocalAdmin/ansible/Az_IaaC_Terraform/Master'
+
+      - task: CopyFilesOverSSH@0
+        displayName: 'Copy Metadata tags file to ansible server'
+        inputs:
+          sshEndpoint: IaCLocalAdminCBTAUTOAPPCP04
+          sourceFolder: '$(artifactRoot)/Terraform/Configuration/InitialProcess'
+          targetFolder: '/home/IaCLocalAdmin/ansible/Az_IaaC_Terraform/Master'  
+
+      - task: SSH@0
+        displayName: 'Trigger Ansible Master Playbook'
+        inputs:
+          sshEndpoint: IaCLocalAdminCBTAUTOAPPCP04
+          runOptions: inline
+          inline: |
+            cd /home/IaCLocalAdmin/ansible/Az_IaaC_Terraform/Master
+            chmod +x TriggerAnsibleMasterPlaybook.ps1 
+            pwsh TriggerAnsibleMasterPlaybook.ps1 -storageAccountName $(storageAccountName) -storageAccountKey $(storageAccountKey) -SubscriptionId $(Subscription) -TypeOfParsing "crf"
+        continueOnError: true 
+
+      - task: PowerShell@2
+        displayName: "DB backup register"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/SQLonVM_Parsing/SqlDbBackup.ps1'
+          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -StateName "sqlonvm.tfstate" -TypeOfParsing "crf"'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+        continueOnError: true   
+
+      - task: PowerShell@2
+        displayName: "DB backup enable protection"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/SQLonVM_Parsing/SqlDbBackupProtection.ps1'
+          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -StateName "sqlonvm.tfstate" -TypeOfParsing "crf"'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)' 
+        continueOnError: true
+        
+
+      - task: PowerShell@2
+        displayName: "Update VM IP"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/SQLonVM_Parsing/UpdateVMIp.ps1'
+          arguments: -SubscriptionId $(Subscription) -TypeOfParsing "crf" -tenantId $(Tenant) -clientId $(ClientId) -secret $(ClientSecret)
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+
+      - task: PowerShell@2
+        displayName: "Pre-Patching"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/SQLonVM_Parsing/PatchingPreScript.ps1'
+          arguments: -SubscriptionId $(Subscription) -TypeOfParsing "crf" -Tenant $(Tenant) -clientId $(ClientId) -ClientSecret $(ClientSecret)
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+        continueOnError: true 
+
+      - task: PowerShell@2
+        displayName: "Adding VM to Azure Update Manager"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/SQLonVM_Parsing/EnablePatching.ps1'
+          arguments: -SubscriptionId $(Subscription) -TypeOfParsing "crf" -Tenant $(Tenant) -ClientId $(ClientId) -ClientSecret $(ClientSecret)
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+        continueOnError: true   
+
+      - task: PowerShell@2
+        displayName: "Enable Patching"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/SQLonVM_Parsing/CreateMaintenanceConfig.ps1'
+          arguments: -SubscriptionId $(Subscription) -TypeOfParsing "crf" -Tenant $(Tenant) -ClientId $(ClientId) -ClientSecret $(ClientSecret)
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+        continueOnError: true                                
+
+      - task: PowerShell@2
+        displayName: "Add VM to Sentinel Rule"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/SQLonVM_Parsing/AddingVmToSentinelRule.ps1'
+          arguments: -SubscriptionId $(Subscription) -TypeOfParsing "crf" -Tenant $(Tenant) -clientId $(ClientId) -ClientSecret $(ClientSecret) -SentinelRuleName $(sentinelRuleName) -sentinelRuleRG $(sentinelRuleRG) -SubSentinelId $(SubSentinelId)
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+        continueOnError: true  
+
+#      - task: PowerShell@2
+#        displayName: "DB backup disable protection"
+#        inputs:
+#          targetType: 'filePath'
+#          filePath: '$(artifactRoot)/Terraform/Configuration/SQLonVM_Parsing/SqlDbBackupDisableProtection.ps1'
+#          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -StateName "sqlonvm.tfstate" -TypeOfParsing "crf"'
+#          pwsh: true  
+#          workingDirectory: '$(artifactRoot)' 
+#        continueOnError: true 
+
+#      - task: PowerShell@2
+#        displayName: "DB backup unregister"
+#        inputs:
+#          targetType: 'filePath'
+#          filePath: '$(artifactRoot)/Terraform/Configuration/SQLonVM_Parsing/SqlDbBackupUnregister.ps1'
+#          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -StateName "sqlonvm.tfstate" -TypeOfParsing "crf"'
+#          pwsh: true  
+#          workingDirectory: '$(artifactRoot)'
+#        continueOnError: true  
+    - job: clean
+      dependsOn: DeploySQLonVM
+      displayName: Clean the Workspace
+      steps:
+      - checkout: none
+      workspace:
+        clean: all      
+
+- stage: AppServicePlan
+  dependsOn: [ResourceGroup]
+  condition: and(
+    eq(dependencies.ResourceGroup.result,'succeeded'),
+    eq(coalesce(dependencies.Init.outputs['CheckSheets.SetVars.AppServicePlanEnabled'], 'false'), 'true')
+    )
+  variables:
+    RGName: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGName'] ]
+    RGLocation: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGLocation'] ]  
+  jobs:
+    - job: DeployAppServicePlanService
+      pool:
+        name: IaC_Automation  
+      steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'drop_$(Build.BuildId)'
+          path: '$(artifactRoot)'
+
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+        displayName: 'Install Terraform latest'
+
+      - task: PowerShell@2
+        displayName: "Deploy AppServicePlan Services"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/CommonFunctions/CreateStateContainer.ps1'
+          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -TypeOfParsing "crf" -StateName "AppServicePlan" -TfvarfileName "AppServicePlan.tfvars" -ServiceTFFolderPath ".\Terraform\Service\AppServicePlan" -DestroyResources ${{ parameters.destroyResourceGroup }} -ResourceGroup "$(RGName)" -ResourceGroupLocation "$(RGLocation)"'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)' 
+
+    - job: clean
+      dependsOn: DeployAppServicePlanService
+      displayName: Clean the Workspace
+      steps:
+      - checkout: none
+      workspace:
+        clean: all            
+
+# Stage 4: Parallel - App Service and Azure SQL
+- stage: AppService
+  dependsOn: [ResourceGroup,AppServicePlan]
+  condition: and(
+    eq(dependencies.ResourceGroup.result,'succeeded'),
+    eq(dependencies.AppServicePlan.result,'succeeded'),
+    eq(coalesce(dependencies.Init.outputs['CheckSheets.SetVars.AppServiceEnabled'], 'false'), 'true')
+    )
+  variables:
+    RGName: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGName'] ]
+    RGLocation: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGLocation'] ]  
+  jobs:
+    - job: DeployAppService
+      pool:
+        name: IaC_Automation  
+      steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'drop_$(Build.BuildId)'
+          path: '$(artifactRoot)'
+
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+        displayName: 'Install Terraform latest'
+
+      - task: PowerShell@2
+        displayName: "Deploy App Services"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/CommonFunctions/CreateStateContainer.ps1'
+          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -TypeOfParsing "crf" -StateName "Appservice.tfstate" -TfvarfileName "AppService.tfvars" -ServiceTFFolderPath ".\Terraform\Service\AppService" -DestroyResources ${{ parameters.destroyResourceGroup }} -ResourceGroup "$(RGName)" -ResourceGroupLocation "$(RGLocation)"'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+
+      - task: PowerShell@2
+        displayName: "A Record Creation"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/AppService_Parsing/DNS_ARecord_Appservice.ps1'
+          arguments: '-RgDnsZoneName $(RgDnsZoneName) -SubscriptionIdDNSZone $(SubscriptionIdDNSZone) -tenantIdDNSZone $(tenantIdDNSZone) -clientIdDNSZone $(clientIdDNSZone) -secretDNSZone $(secretDNSZone) -SubscriptionId $(Subscription) -ClientId $(ClientId) -secret $(ClientSecret) -tenantId $(Tenant) -AppServiceDnsZoneName $(FunctionAppDnsZoneName)'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+
+    - job: clean
+      dependsOn: DeployAppService
+      displayName: Clean the Workspace
+      steps:
+      - checkout: none
+      workspace:
+        clean: all
+
+- stage: FunctionApp
+  dependsOn: [AppServicePlan,StorageAccount,ResourceGroup]
+  condition: and(
+    eq(dependencies.AppServicePlan.result,'succeeded'),
+    eq(dependencies.StorageAccount.result,'succeeded'),
+    eq(dependencies.ResourceGroup.result,'succeeded'),
+    eq(coalesce(dependencies.Init.outputs['CheckSheets.SetVars.FunctionAppEnabled'], 'false'), 'true')
+    )
+  variables:
+    RGName: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGName'] ]
+    RGLocation: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGLocation'] ]  
+  jobs:
+    - job: DeployFunctionAppService
+      pool:
+        name: IaC_Automation  
+      steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'drop_$(Build.BuildId)'
+          path: '$(artifactRoot)'
+
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+        displayName: 'Install Terraform latest'
+
+      - task: PowerShell@2
+        displayName: "Deploy FunctionApp Services"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/CommonFunctions/CreateStateContainer.ps1'
+          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -TypeOfParsing "crf" -StateName "FunctionApp" -TfvarfileName "FunctionApp.tfvars" -ServiceTFFolderPath ".\Terraform\Service\FunctionApp" -DestroyResources ${{ parameters.destroyResourceGroup }} -ResourceGroup "$(RGName)" -ResourceGroupLocation "$(RGLocation)"'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+      - task: PowerShell@2
+        displayName: "A Record Creation"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/FunctionApp_Parsing/SitesARecord.ps1'
+          arguments: '-FileshareDnsZoneName $(FileshareDnsZoneName) -RgDnsZoneName $(RgDnsZoneName) -SubscriptionIdDNSZone $(SubscriptionIdDNSZone) -tenantIdDNSZone $(tenantIdDNSZone) -clientIdDNSZone $(clientIdDNSZone) -secretDNSZone $(secretDNSZone) -SubscriptionId $(Subscription) -ClientId $(ClientId) -secret $(ClientSecret) -tenantId $(Tenant) -FunctionAppDnsZoneName $(FunctionAppDnsZoneName)'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+
+    - job: clean
+      dependsOn: DeployFunctionAppService
+      displayName: Clean the Workspace
+      steps:
+      - checkout: none
+      workspace:
+        clean: all               
+
+
+- stage: AzureSQL
+  dependsOn: [ResourceGroup]
+  condition: and(
+    eq(dependencies.ResourceGroup.result,'succeeded'),
+    eq(coalesce(dependencies.Init.outputs['CheckSheets.SetVars.SQLDBEnabled'], 'false'), 'true')
+    )
+  variables:
+    RGName: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGName'] ]
+    RGLocation: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGLocation'] ]  
+  jobs:
+    - job: AzureSQL
+      pool:
+        name: IaC_Automation    
+      steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'drop_$(Build.BuildId)'
+          path: '$(artifactRoot)'
+
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+        displayName: 'Install Terraform latest'
+
+      - task: PowerShell@2
+        displayName: "Azure SQL"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/CommonFunctions/CreateStateContainer.ps1'
+          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -TypeOfParsing "crf" -StateName "AzureSQL.tfstate" -TfvarfileName "AZSQL.tfvars" -ServiceTFFolderPath ".\Terraform\Service\AzureSQL" -DestroyResources ${{ parameters.destroyResourceGroup }} -ResourceGroup "$(RGName)" -ResourceGroupLocation "$(RGLocation)" -ServiceName "AzureSQL" -managedIdentityId $(managedIdentityId) -KvName $(KvName)'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+
+      - task: PowerShell@2
+        displayName: "A Record Creation"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/AzureSQL_Parsing/AzSQLDNSARecord.ps1'
+          arguments: '-RgDnsZoneName $(RgDnsZoneName) -SubscriptionIdDNSZone $(SubscriptionIdDNSZone) -tenantIdDNSZone $(tenantIdDNSZone) -clientIdDNSZone $(clientIdDNSZone) -secretDNSZone $(secretDNSZone) -SubscriptionId $(Subscription) -ClientId $(ClientId) -secret $(ClientSecret) -tenantId $(Tenant) -DnsZoneName $(DnsZoneName)'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'           
+    - job: clean
+      dependsOn: AzureSQL
+      displayName: Clean the Workspace
+      steps:
+      - checkout: none
+      workspace:
+        clean: all
+
+
+- stage: ASR
+  dependsOn: [ResourceGroup]
+  condition: and(
+    eq(dependencies.ResourceGroup.result,'succeeded'),
+    eq(coalesce(dependencies.Init.outputs['CheckSheets.SetVars.ASREnabled'], 'false'), 'true')
+    )
+  variables:
+    RGName: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGName'] ]
+    RGLocation: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGLocation'] ]
+  jobs:
+    - job: DeployASR
+      pool:
+        name: IaC_Automation 
+      steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'drop_$(Build.BuildId)'
+          path: '$(artifactRoot)'       
+      
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+        displayName: 'Install Terraform latest'
+
+      - task: PowerShell@2
+        displayName: "Deploy ASR"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/CommonFunctions/CreateStateContainer.ps1'
+          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -TypeOfParsing "crf" -StateName "siteRecovery.tfstate" -TfvarfileName "siteRecovery.tfvars" -ServiceTFFolderPath ".\Terraform\Service\AzureSiteRecovery" -ResourceGroup "$(RGName)" -ResourceGroupLocation "$(RGLocation)"'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+
+# Stage 5: Final Parallel - Windows VM and Linux VM
+- stage: LinuxVM
+  # dependsOn: [KeyVault, ResourceGroup, ASR]
+  # condition: and(
+  #   in(dependencies.StorageAccount.result, 'succeeded', 'skipped'),
+  #   in(dependencies.KeyVault.result, 'succeeded', 'skipped'),
+  #   in(dependencies.ASR.result, 'succeeded', 'skipped'),
+  #   eq(dependencies.ResourceGroup.result, 'succeeded'),
+  #   eq(coalesce(dependencies.Init.outputs['CheckSheets.SetVars.LinuxVMEnabled'], 'false'), 'true')
+  #   )
+  dependsOn: [ResourceGroup, ASR]
+  condition: and(
+    in(dependencies.ASR.result, 'succeeded', 'skipped'),
+    eq(dependencies.ResourceGroup.result, 'succeeded'),
+    eq(coalesce(dependencies.Init.outputs['CheckSheets.SetVars.LinuxVMEnabled'], 'false'), 'true')
+    )
+  variables:
+    RGName: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGName'] ]
+    RGLocation: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGLocation'] ]
+    ASREnabled: $[ stageDependencies.Init.CheckSheets.outputs['SetVars.ASREnabled'] ]
+  jobs:
+    - job: DeployLinuxVM
+      pool:
+        name: IaC_Automation
+      steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'drop_$(Build.BuildId)'
+          path: '$(artifactRoot)'
+
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+        displayName: 'Install Terraform latest'
+
+      - task: PowerShell@2
+        displayName: "Show ASREnabled"
+        inputs:
+          targetType: 'inline'
+          script: |
+            Write-Host "ASREnabled is: $(ASREnabled)" 
+
+      - task: PowerShell@2
+        displayName: "Deploy Linux VM"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/CommonFunctions/CreateStateContainer.ps1'
+          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -TypeOfParsing "crf" -StateName "Linux-VM.tfstate" -TfvarfileName "VM.tfvars" -ServiceTFFolderPath ".\Terraform\Service\VM\Linux" -DestroyResources ${{ parameters.destroyWindowsVM }} -ResourceGroup "$(RGName)" -ResourceGroupLocation "$(RGLocation)" -SubscriptionIdGoldenImage $(SubscriptionIdGoldenImage) -ServiceName "LinuxVM" -managedIdentityId $(managedIdentityId) -KvName $(KvName)'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+
+      - task: PowerShell@2
+        displayName: "Health Check"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/VM_Parsing/HealthChecks.ps1'
+          arguments: '-storageAccountName $(storageAccountName) -storageAccountKey $(storageAccountKey) -SubscriptionIdState $(SubscriptionIdState) -SubscriptionId $(Subscription) -TypeOfParsing "crf" -RG_Name "$(RGName)" -StateName "Linux-VM.tfstate"'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'      
+
+      - task: PowerShell@2
+        displayName: "Install YAML converter module"
+        inputs:
+          targetType: 'inline'
+          script: |
+            Install-Module -Name powershell-yaml -Force -Repository PSGallery -Scope CurrentUser
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'            
+
+      - task: PowerShell@2
+        displayName: "Calculate Ansible Input"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/VM_Parsing/GenerateAnsibleGroupInput.ps1'
+          arguments: -storageAccountName $(storageAccountName) -storageAccountKey $(storageAccountKey) -SubscriptionId $(Subscription) -TypeOfParsing "crf" -RG_Name "$(RGName)" -StateName "Linux-VM.tfstate" -OSJson "LinuxVM.json"
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'           
+
+      - task: CopyFilesOverSSH@0
+        displayName: 'Copy Dinamyc file into Ansible Server'
+        inputs:
+          sshEndpoint: IaCLocalAdminCBTAUTOAPPCP04
+          sourceFolder: '$(artifactRoot)/Terraform/Configuration/VM_Parsing'
+          contents: '**.yml'
+          targetFolder: '/home/IaCLocalAdmin/ansible/Az_IaaC_Terraform/Master'
+
+      - task: CopyFilesOverSSH@0
+        displayName: 'Copy hostname file to ansible server'
+        inputs:
+          sshEndpoint: IaCLocalAdminCBTAUTOAPPCP04
+          sourceFolder: '$(artifactRoot)/Terraform/Configuration/InitialProcess'
+          contents: '**.json'
+          targetFolder: '/home/IaCLocalAdmin/ansible/Az_IaaC_Terraform/Master'
+
+      - task: SSH@0
+        displayName: 'Trigger Ansible Master Playbook'
+        inputs:
+          sshEndpoint: IaCLocalAdminCBTAUTOAPPCP04
+          runOptions: inline
+          inline: |         
+            cd /home/IaCLocalAdmin/ansible/Az_IaaC_Terraform/Master
+            chmod +x TriggerAnsibleMasterPlaybook.ps1 
+            pwsh TriggerAnsibleMasterPlaybook.ps1 -storageAccountName $(storageAccountName) -storageAccountKey $(storageAccountKey) -SubscriptionId $(Subscription) -TypeOfParsing "crf"
+        continueOnError: true
+ 
+      - task: PowerShell@2
+        displayName: "Update VM IP"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/VM_Parsing/UpdateVMIp.ps1'
+          arguments: -SubscriptionId $(Subscription) -TypeOfParsing "crf" -tenantId $(Tenant) -clientId $(ClientId) -secret $(ClientSecret) -OSJson "LinuxVM.json"
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'    
+
+      - task: PowerShell@2
+        displayName: "Pre-Patching"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/VM_Parsing/PatchingPreScript.ps1'
+          arguments: -SubscriptionId $(Subscription) -TypeOfParsing "crf" -Tenant $(Tenant) -ClientId $(ClientId) -ClientSecret $(ClientSecret) -OSJson "LinuxVM.json"
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'  
+
+      - task: PowerShell@2
+        displayName: "Adding VM to Azure Update Manager"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/VM_Parsing/EnablePatching.ps1'
+          arguments: -SubscriptionId $(Subscription) -TypeOfParsing "crf" -Tenant $(Tenant) -ClientId $(ClientId) -ClientSecret $(ClientSecret) -OSJson "LinuxVM.json"
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)' 
+
+      - task: PowerShell@2
+        displayName: "Enable Patching"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/VM_Parsing/CreateMaintenanceConfig.ps1'
+          arguments: -SubscriptionId $(Subscription) -TypeOfParsing "crf" -Tenant $(Tenant) -ClientId $(ClientId) -ClientSecret $(ClientSecret) -OSJson "LinuxVM.json"
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'                     
+
+      - task: PowerShell@2
+        displayName: "Add VM to Sentinel Rule"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/VM_Parsing/AddingVMSentinelRule.ps1'
+          arguments: -SubscriptionId $(Subscription) -TypeOfParsing "crf" -tenantId $(Tenant) -clientId $(ClientId) -secret $(ClientSecret) -SentinelRuleName $(sentinelRuleName) -sentinelRuleRG $(sentinelRuleRG) -SubSentinelId $(SubSentinelId) -OSJson "LinuxVM.json"
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)' 
+      
+      - task: PowerShell@2
+        displayName: "Enable VM Replication"
+        condition: eq(variables['ASREnabled'], 'true')
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/CommonFunctions/CreateStateContainer.ps1'
+          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -TypeOfParsing "crf" -StateName "LinuxVMReplication.tfstate" -TfvarfileName "linux.tfvars" -ServiceTFFolderPath ".\Terraform\Service\VMReplication" -DestroyResources ${{ parameters.destroyWindowsVM }} -ResourceGroup "$(RGName)" -ResourceGroupLocation "$(RGLocation)" -SubscriptionIdGoldenImage $(SubscriptionIdGoldenImage) -ServiceName "LinuxVMReplication" -managedIdentityId $(managedIdentityId) -KvName $(KvName)'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+
+    - job: clean
+      dependsOn: DeployLinuxVM
+      displayName: Clean the Workspace
+      steps:
+      - checkout: none
+      workspace:
+        clean: all
+
+- stage: WindowsVM
+  # dependsOn: [KeyVault, ResourceGroup, ASR]
+  # condition: and(
+  #   in(dependencies.StorageAccount.result, 'succeeded', 'skipped'),
+  #   in(dependencies.KeyVault.result, 'succeeded', 'skipped'),
+  #   in(dependencies.ASR.result, 'succeeded', 'skipped'),
+  #   eq(dependencies.ResourceGroup.result, 'succeeded'),
+  #   eq(coalesce(dependencies.Init.outputs['CheckSheets.SetVars.LinuxVMEnabled'], 'false'), 'true')
+  #   )
+  dependsOn: [ResourceGroup, ASR]
+  condition: and(
+    in(dependencies.ASR.result, 'succeeded', 'skipped'),
+    eq(dependencies.ResourceGroup.result, 'succeeded'),
+    eq(coalesce(dependencies.Init.outputs['CheckSheets.SetVars.LinuxVMEnabled'], 'false'), 'true')
+    )
+  variables:
+    RGName: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGName'] ]
+    RGLocation: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGLocation'] ]
+    ASREnabled: $[ stageDependencies.Init.CheckSheets.outputs['SetVars.ASREnabled'] ]
+  jobs:
+    - job: DeployWindowsVM
+      pool:
+        name: IaC_Automation
+      steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'drop_$(Build.BuildId)'
+          path: '$(artifactRoot)'
+
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+        displayName: 'Install Terraform latest'
+
+      - task: PowerShell@2
+        displayName: "Deploy Windows VM"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/CommonFunctions/CreateStateContainer.ps1'
+          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -TypeOfParsing "crf" -StateName "Windows-VM.tfstate" -TfvarfileName "VM.tfvars" -ServiceTFFolderPath ".\Terraform\Service\VM\Windows" -DestroyResources ${{ parameters.destroyWindowsVM }} -ResourceGroup "$(RGName)" -ResourceGroupLocation "$(RGLocation)" -SubscriptionIdGoldenImage $(SubscriptionIdGoldenImage) -ServiceName "WindowsVM" -managedIdentityId $(managedIdentityId) -KvName $(KvName)'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+
+      - task: PowerShell@2
+        displayName: "Health Check"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/VM_Parsing/HealthChecks.ps1'
+          arguments: -storageAccountName $(storageAccountName) -storageAccountKey $(storageAccountKey) -SubscriptionIdState $(SubscriptionIdState) -SubscriptionId $(Subscription) -TypeOfParsing "crf" -RG_Name "$(RGName)" -StateName "Windows-VM.tfstate"
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'          
+
+      - task: PowerShell@2
+        displayName: "Install YAML converter module"
+        inputs:
+          targetType: 'inline'
+          script: |
+            Install-Module -Name powershell-yaml -Force -Repository PSGallery -Scope CurrentUser
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'            
+
+      - task: PowerShell@2
+        displayName: "Calculate Ansible Input & Enable WinRM"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/VM_Parsing/GenerateAnsibleGroupInput.ps1'
+          arguments: '-storageAccountName $(storageAccountName) -storageAccountKey $(storageAccountKey) -SubscriptionId $(Subscription) -TypeOfParsing "crf" -RG_Name "$(RGName)" -StateName "Windows-VM.tfstate" -OSJson "WindowsVM.json"'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'           
+
+      - task: SSH@0
+        displayName: 'Run shell commands on remote machine'
+        inputs:
+          sshEndpoint: IaCLocalAdminCBTAUTOAPPCP04
+          commands: |
+            touch /tmp/text1
+            echo $date > /tmp/text1
+            echo "Testing SSH Connection from Ansible Server" > /tmp/text1
+        enabled: true        
+
+      - task: CopyFilesOverSSH@0
+        displayName: 'Copy Dynamic file into Ansible Server'
+        inputs:
+          sshEndpoint: IaCLocalAdminCBTAUTOAPPCP04
+          sourceFolder: '$(artifactRoot)/Terraform/Configuration/VM_Parsing'
+          contents: '**.yml'
+          targetFolder: '/home/IaCLocalAdmin/ansible/Az_IaaC_Terraform/Master'
+
+      - task: CopyFilesOverSSH@0
+        displayName: 'Copy hostname file to ansible server'
+        inputs:
+          sshEndpoint: IaCLocalAdminCBTAUTOAPPCP04
+          sourceFolder: '$(artifactRoot)/Terraform/Configuration/InitialProcess'
+          contents: '**.json'
+          targetFolder: '/home/IaCLocalAdmin/ansible/Az_IaaC_Terraform/Master'
+
+      - task: SSH@0
+        displayName: 'Trigger Ansible Master Playbook'
+        inputs:
+          sshEndpoint: IaCLocalAdminCBTAUTOAPPCP04
+          runOptions: inline
+          inline: |                        
+            cd /home/IaCLocalAdmin/ansible/Az_IaaC_Terraform/Master
+            chmod +x TriggerAnsibleMasterPlaybook.ps1 
+            pwsh TriggerAnsibleMasterPlaybook.ps1 -storageAccountName $(storageAccountName) -storageAccountKey $(storageAccountKey) -SubscriptionId $(Subscription) -TypeOfParsing "crf"
+        enabled: true
+        continueOnError: true
+
+      - task: PowerShell@2
+        displayName: "Update VM IP"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/VM_Parsing/UpdateVMIp.ps1'
+          arguments: -SubscriptionId $(Subscription) -TypeOfParsing "crf" -tenantId $(Tenant) -clientId $(ClientId) -secret $(ClientSecret) -OSJson "WindowsVM.json"
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'    
+
+      - task: PowerShell@2
+        displayName: "Pre-Patching"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/VM_Parsing/PatchingPreScript.ps1'
+          arguments: -SubscriptionId $(Subscription) -TypeOfParsing "crf" -Tenant $(Tenant) -ClientId $(ClientId) -ClientSecret $(ClientSecret) -OSJson "WindowsVM.json"
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'  
+
+      - task: PowerShell@2
+        displayName: "Adding VM to Azure Update Manager"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/VM_Parsing/EnablePatching.ps1'
+          arguments: -SubscriptionId $(Subscription) -TypeOfParsing "crf" -Tenant $(Tenant) -ClientId $(ClientId) -ClientSecret $(ClientSecret) -OSJson "WindowsVM.json"
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)' 
+
+      - task: PowerShell@2
+        displayName: "Enable Patching"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/VM_Parsing/CreateMaintenanceConfig.ps1'
+          arguments: -SubscriptionId $(Subscription) -TypeOfParsing "crf" -Tenant $(Tenant) -ClientId $(ClientId) -ClientSecret $(ClientSecret) -OSJson "WindowsVM.json"
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'                     
+
+      - task: PowerShell@2
+        displayName: "Add VM to Sentinel Rule"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/VM_Parsing/AddingVMSentinelRule.ps1'
+          arguments: -SubscriptionId $(Subscription) -TypeOfParsing "crf" -tenantId $(Tenant) -clientId $(ClientId) -secret $(ClientSecret) -SentinelRuleName $(sentinelRuleName) -sentinelRuleRG $(sentinelRuleRG) -SubSentinelId $(SubSentinelId) -OSJson "WindowsVM.json"
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)' 
+      
+      - task: PowerShell@2
+        displayName: "Enable VM Replication"
+        #condition: eq(variables['ASREnabled'], 'true')
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/CommonFunctions/CreateStateContainer.ps1'
+          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -TypeOfParsing "crf" -StateName "VMReplication.tfstate" -TfvarfileName "windows.tfvars" -ServiceTFFolderPath ".\Terraform\Service\VMReplication" -DestroyResources ${{ parameters.destroyWindowsVM }} -ResourceGroup "$(RGName)" -ResourceGroupLocation "$(RGLocation)" -SubscriptionIdGoldenImage $(SubscriptionIdGoldenImage) -ServiceName "LinuxVMReplication" -managedIdentityId $(managedIdentityId) -KvName $(KvName)'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+
+    - job: clean
+      dependsOn: DeployWindowsVM
+      displayName: Clean the Workspace
+      steps:
+      - checkout: none
+      workspace:
+        clean: all
+
+- stage: AppGateway
+  dependsOn: [KeyVault,AppService,ResourceGroup,LinuxVM,WindowsVM]
+  condition: and(
+    in(dependencies.KeyVault.result, 'succeeded', 'skipped'),
+    in(dependencies.AppService.result, 'succeeded', 'skipped'),
+    in(dependencies.LinuxVM.result, 'succeeded', 'skipped'),
+    in(dependencies.WindowsVM.result, 'succeeded', 'skipped'),
+    eq(dependencies.ResourceGroup.result, 'succeeded'),
+    eq(coalesce(dependencies.Init.outputs['CheckSheets.SetVars.AppGatewayEnabled'], 'false'), 'true')
+    )
+  variables:
+    RGName: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGName'] ]
+    RGLocation: $[ stageDependencies.ResourceGroup.Create_Resource_Group.outputs['SetRGVars.CreatedRGLocation'] ]
+  jobs:
+    - job: AppGateway
+      pool:
+        name: IaC_Automation
+      steps:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          artifact: 'drop_$(Build.BuildId)'
+          path: '$(artifactRoot)'
+
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+        displayName: 'Install Terraform latest'
+
+      - task: PowerShell@2
+        displayName: "Deploy App Gateway"
+        inputs:
+          targetType: 'filePath'
+          filePath: '$(artifactRoot)/Terraform/Configuration/CommonFunctions/CreateStateContainer.ps1'
+          arguments: '-RG_Name $(RG_Name) -storageAccountName $(storageAccountName) -SubscriptionId $(Subscription) -SubscriptionIdState $(SubscriptionIdState) -storageAccountKey $(storageAccountKey) -sasToken "$(sasToken)" -ClientId $(ClientId) -ClientSecret $(ClientSecret) -Tenant $(Tenant) -TypeOfParsing "crf" -StateName "AppGateway.tfstate" -TfvarfileName "AppGateway.tfvars" -ServiceTFFolderPath ".\Terraform\Service\AppGateway" -DestroyResources ${{ parameters.destroyAppGateway }} -ResourceGroup "$(RGName)" -ResourceGroupLocation "$(RGLocation)" -ServiceName "AppGateway"'
+          pwsh: true  
+          workingDirectory: '$(artifactRoot)'
+    - job: clean
+      dependsOn: AppGateway
+      displayName: Clean the Workspace
+      steps:
+      - checkout: none
+      workspace:
+        clean: all
+
+- stage: Clean
+  displayName: 'clean'
+  dependsOn:
+    - Generate_CI_Artifact
+    - Budget
+    - Init
+    - ResourceGroup
+    - StorageAccount
+    - KeyVault
+    - FileShare
+    - SQLonVM
+    - AppService
+    - AzureSQL
+    - LinuxVM
+    - WindowsVM
+    - AppGateway
+    - FunctionApp
+    - ASR
+  condition: always()
+  jobs:
+    - job: clean
+      displayName: Clean the Workspace
+      steps:
+      - checkout: none
+      workspace:
+        clean: all
