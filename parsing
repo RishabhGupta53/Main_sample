@@ -1,349 +1,189 @@
-blob excel sheet which will convert into json file
-Resource_Description	AZ_Region	Performance	Premium account type	Access tier	Minimum TLS version	Permitted scope for copy operations (preview)	Enable hierarchical namespace	Enable SFTP	Enable network file system v3	Virtual Network Private Endpoint	Subnet For Private Endpoint	Routing preference	Enable versioning for blobs	Enable blob change feed	Static Website Enabled	Enable infrastructure encryption
-sto_200	East US 2	Premium	FileStorage	Hot	TLS1_2	AAD	false	false	false	vn-dev-eus2	snt-DevPrivate-eus2	MicrosoftRouting	false	false	false	false
-
-
-
-
-parshing file (json into tfvars)
-
 #Last Modification 19/02/2025
 #Created by Luis Sandoval
 #Calculating Tags and resources names calculation
 
-function CalculateStorageAccountName 
-{
+function CalculateStorageAccountName {
+    [CmdletBinding()]
     param (
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
         [string] $SubscriptionId
     )
 
-    Write-Host "Processing StorageAccount......."
+    try {
+        Write-Host "Processing StorageAccount..." -ForegroundColor Green
 
-    $ModulePath = ".\Configuration\CommonFunctions\CommonFunctions.psm1"
-    Import-Module $ModulePath -Force
-    $AppMetaDataJson = Get-Content ".\Configuration\InitialProcess\AppMetadata.json" -Raw | ConvertFrom-Json
-    $Storage_Blob = Get-Content ".\Configuration\InitialProcess\Blob.json" -Raw | ConvertFrom-Json
-    $Storage_Map = New-Object System.Collections.Generic.Dictionary"[String,object]" 
-    $count = 0
-
-    $Tags_Array = $AppMetaDataJson | Select-Object -Property Resource_Description, CCoE_ID_Number, Application_Name, Entity, Organization, CHG_Ticket, Launch_Date, Deploy_Type -First 1 |  ConvertTo-Json -Depth 100
-    $Application_Name = $AppMetaDataJson.Application_Name
-    $Application_Code = $AppMetaDataJson.Application_Code
-    $Cloud_Provider = Get-CloudProvider -Provider $AppMetaDataJson.Cloud_Provider
-    $Region = Get-AzRegion -Region $Storage_Blob[0].AZ_Region
-    $Environment = Get-AzEnvironment -Environment $AppMetaDataJson.Environment
-    $Entity = $AppMetaDataJson.Entity
-    $Type_Code = "PRI"
-    $ResourceGroupName = "rg-" + $Application_Name + "-" + $Entity + "-" + $Region + "-" + $Environment + "-" + $Type_Code
-    $currentDate = Get-Date -Format "dd/MM/yyyy"
-    $Resource_Description = $Storage_Blob[0].Resource_Description
-
-    $StorageJsonTags = $Tags_Array | ConvertFrom-Json
-    $StorageJsonTags | Add-Member -MemberType NoteProperty -Name "Resource_Groups" -Value "$ResourceGroupName" -Force
-    $StorageJsonTags | Add-Member -MemberType NoteProperty -Name "Launch_Date" -Value "$currentDate" -Force
-    $StorageJsonTags | Add-Member -MemberType NoteProperty -Name "Resource_Description" -Value "$Resource_Description" -Force
-
-    $Tags_Array = $StorageJsonTags | ConvertTo-Json -Depth 100
-
-    if($Environment -eq "P"){
-        $Redundancy = "GRS"
-    }
-    else{
-        $Redundancy = "LRS"
-    }
-
-    foreach($item in $Storage_Blob)
-    {
-        $count++
-
-        if($count -gt 10)
-        {
-            $Secuential_Digit = $count
+        # Import required modules
+        $ModulePath = ".\Configuration\CommonFunctions\CommonFunctions.psm1"
+        if (-not (Test-Path $ModulePath)) {
+            throw "Module path not found: $ModulePath"
         }
-        else 
-        {
-            $Secuential_Digit = "0$count"
-        }
-        ##Storage Account Name Calculation
-        $StorageAccountName = "$Entity" + "$Application_Code" + "STO" + "$Cloud_Provider" + "$Environment" + "$Secuential_Digit"
+        Import-Module $ModulePath -Force
+
+        # Load configuration files
+        $AppMetaDataPath = ".\Configuration\InitialProcess\AppMetadata.json"
+        $BlobConfigPath = ".\Configuration\InitialProcess\Blob.json"
         
-        ##Storage account Calculation
-        $sto = [StorageAccount]::new()
-        $sto.name = $StorageAccountName.ToLower()
-        $sto.sto_region = $Region
-        $sto.account_tier = $item.'Performance'
-        if ($sto.account_tier -eq "Standard") {
-            $sto.kind = "StorageV2"
-        } else {
-            $sto.kind = $item."Premium account type"
+        if (-not (Test-Path $AppMetaDataPath)) {
+            throw "AppMetadata.json not found at: $AppMetaDataPath"
         }
-        $sto.account_replication_type = $Redundancy
-        $sto.access_tier = $item.'Access tier'
-        $sto.copy_scope = $item.'Permitted scope for copy operations (preview)'
-        $sto.feed = $item.'Enable blob change feed'
-        $sto.hns = $item.'Enable hierarchical namespace'
-        $sto.infra_encrypt = $item.'Enable infrastructure encryption'
-        $sto.nfs = $item.'Enable network file system v3'
-        $sto.routing = $item.'Routing preference'
-        $sto.sftp = $item.'Enable SFTP'
-        $sto.tls = $item.'Minimum TLS version'
-        $sto.versioning = $item.'Enable versioning for blobs'
-        $sto.pep_subnet = $item.'Subnet For Private Endpoint'
-        $sto.pep_vnet = $item.'Virtual Network Private Endpoint'
-        $sto.static_website_enabled = ($item.'Static Website Enabled').ToLower()
+        if (-not (Test-Path $BlobConfigPath)) {
+            throw "Blob.json not found at: $BlobConfigPath"
+        }
+
+        $AppMetaDataJson = Get-Content $AppMetaDataPath -Raw | ConvertFrom-Json
+        $StorageBlob = Get-Content $BlobConfigPath -Raw | ConvertFrom-Json
         
-        #Connect-AzAccount
+        # Validate required properties
+        $requiredProperties = @('Application_Name', 'Application_Code', 'Cloud_Provider', 'Environment', 'Entity')
+        foreach ($prop in $requiredProperties) {
+            if (-not $AppMetaDataJson.$prop) {
+                throw "Missing required property in AppMetadata: $prop"
+            }
+        }
+
+        $StorageMap = New-Object System.Collections.Generic.Dictionary"[String,Object]"
+        $count = 0
+
+        # Build tags array
+        $tagsObject = $AppMetaDataJson | Select-Object -Property Resource_Description, CCoE_ID_Number, Application_Name, Entity, Organization, CHG_Ticket, Launch_Date, Deploy_Type -First 1
+        
+        # Get configuration values
+        $applicationName = $AppMetaDataJson.Application_Name
+        $applicationCode = $AppMetaDataJson.Application_Code
+        $cloudProvider = Get-CloudProvider -Provider $AppMetaDataJson.Cloud_Provider
+        $region = Get-AzRegion -Region $StorageBlob[0].AZ_Region
+        $environment = Get-AzEnvironment -Environment $AppMetaDataJson.Environment
+        $entity = $AppMetaDataJson.Entity
+        $typeCode = "PRI"
+        $resourceGroupName = "rg-$applicationName-$entity-$region-$environment-$typeCode"
+        $currentDate = Get-Date -Format "dd/MM/yyyy"
+        $resourceDescription = $StorageBlob[0].Resource_Description
+
+        # Add additional properties to tags
+        $tagsObject | Add-Member -MemberType NoteProperty -Name "Resource_Groups" -Value $resourceGroupName -Force
+        $tagsObject | Add-Member -MemberType NoteProperty -Name "Launch_Date" -Value $currentDate -Force
+        $tagsObject | Add-Member -MemberType NoteProperty -Name "Resource_Description" -Value $resourceDescription -Force
+
+        $tagsArray = $tagsObject | ConvertTo-Json -Depth 100
+
+        # Set redundancy based on environment
+        $redundancy = if ($environment -eq "P") { "GRS" } else { "LRS" }
+
+        # Set Azure context
         Set-AzContext -Subscription $SubscriptionId
-        $VnetName = $item.'Virtual Network Private Endpoint'
-        $Subnet_Name = $item.'Subnet For Private Endpoint'
-        $VnetQuery = Get-AzVirtualNetwork -Name $VnetName 
-        Write-Host $VnetQuery
-        $Vnet_RG = $VnetQuery.ResourceGroupName
-        $Vnet_CIDR = $VnetQuery.AddressSpace.AddressPrefixes
-        Write-Host "VNET RG: $Vnet_RG"
-        Write-Host "VNET CIDR: $Vnet_CIDR"
-        $SubnetQuery = Get-AzVirtualNetworkSubnetConfig -Name "$Subnet_Name" -VirtualNetwork $VnetQuery  
-        Write-Host $SubnetQuery
-        $Subnet_CIDR = $SubnetQuery.AddressPrefix
-        Write-Host "Subnet Name: $Subnet_Name"
-        Write-Host "Subnet CIDR: $Subnet_CIDR"
-        $sto.vnet_rg = $Vnet_RG
+
+        foreach ($item in $StorageBlob) {
+            $count++
+            $sequentialDigit = if ($count -gt 10) { $count } else { "0$count" }
+            
+            # Calculate Storage Account Name
+            $storageAccountName = "$entity$applicationCode" + "STO$cloudProvider$environment$sequentialDigit"
+            
+            # Validate storage account name length and characters
+            if ($storageAccountName.Length -gt 24 -or $storageAccountName.Length -lt 3) {
+                Write-Warning "Storage account name length invalid: $storageAccountName"
+                continue
+            }
+
+            # Create storage account object
+            $sto = [StorageAccount]::new()
+            $sto.name = $storageAccountName.ToLower()
+            $sto.sto_region = $region
+            $sto.account_tier = $item.Performance
+            
+            # Set kind based on account tier
+            $sto.kind = if ($sto.account_tier -eq "Standard") { 
+                "StorageV2" 
+            } else { 
+                $item."Premium account type" 
+            }
+            
+            $sto.account_replication_type = $redundancy
+            $sto.access_tier = $item.'Access tier'
+            $sto.copy_scope = $item.'Permitted scope for copy operations (preview)'
+            $sto.feed = [System.Convert]::ToBoolean($item.'Enable blob change feed')
+            $sto.hns = [System.Convert]::ToBoolean($item.'Enable hierarchical namespace')
+            $sto.infra_encrypt = [System.Convert]::ToBoolean($item.'Enable infrastructure encryption')
+            $sto.nfs = [System.Convert]::ToBoolean($item.'Enable network file system v3')
+            $sto.routing = $item.'Routing preference'
+            $sto.sftp = [System.Convert]::ToBoolean($item.'Enable SFTP')
+            $sto.tls = $item.'Minimum TLS version'
+            $sto.versioning = [System.Convert]::ToBoolean($item.'Enable versioning for blobs')
+            $sto.pep_subnet = $item.'Subnet For Private Endpoint'
+            $sto.pep_vnet = $item.'Virtual Network Private Endpoint'
+            $sto.static_website_enabled = $item.'Static Website Enabled'.ToLower()
+
+            # Get VNet and Subnet information
+            try {
+                $vnetName = $item.'Virtual Network Private Endpoint'
+                $subnetName = $item.'Subnet For Private Endpoint'
+                
+                $vnetQuery = Get-AzVirtualNetwork -Name $vnetName -ErrorAction Stop
+                $vnetRG = $vnetQuery.ResourceGroupName
+                $vnetCIDR = $vnetQuery.AddressSpace.AddressPrefixes
+                
+                Write-Host "VNET RG: $vnetRG" -ForegroundColor Yellow
+                Write-Host "VNET CIDR: $vnetCIDR" -ForegroundColor Yellow
+                
+                $subnetQuery = Get-AzVirtualNetworkSubnetConfig -Name $subnetName -VirtualNetwork $vnetQuery -ErrorAction Stop
+                $subnetCIDR = $subnetQuery.AddressPrefix
+                
+                Write-Host "Subnet Name: $subnetName" -ForegroundColor Yellow
+                Write-Host "Subnet CIDR: $subnetCIDR" -ForegroundColor Yellow
+                
+                $sto.vnet_rg = $vnetRG
+            }
+            catch {
+                Write-Error "Failed to get VNet/Subnet information for $vnetName/$subnetName : $_"
+                continue
+            }
+
+            $StorageMap.Add("Storage_$count", $sto)
+        }
+
+        # Generate output
+        $stoJson = $StorageMap | ConvertTo-Json -Depth 100
+        $tfVarsFilePath = ".\Service\StorageAccount\Blob.tfvars"
         
-        #$Storage_Map.Add("Storage_$count",$sto)
-        $Storage_Map.Add("Storage_$count",$sto)
+        # Ensure directory exists
+        $directory = Split-Path -Parent $tfVarsFilePath
+        if (-not (Test-Path $directory)) {
+            New-Item -ItemType Directory -Path $directory -Force
+        }
 
+        Set-Content $tfVarsFilePath "sto_tags = $tagsArray"
+        Add-Content $tfVarsFilePath "StorageAccounts = $stoJson"
+        
+        Write-Host "Successfully generated $($StorageMap.Count) storage account configurations" -ForegroundColor Green
+        Write-Host "Output written to: $tfVarsFilePath" -ForegroundColor Green
     }
-    $Sto_Json = $Storage_Map | ConvertTo-Json -Depth 100
-    $tfVarsFilePath = ".\Service\StorageAccount\Blob.tfvars"
- 
-    Set-Content $tfVarsFilePath  "`nsto_tags = $Tags_Array"
-    Add-Content $tfVarsFilePath  "`nStorageAccounts = $Sto_Json" 
-
+    catch {
+        Write-Error "Error in CalculateStorageAccountName: $_"
+        throw
+    }
 }
 
-
-class StorageAccount
-{
+class StorageAccount {
     [string] $name
     [string] $sto_region
     [string] $account_tier
     [string] $account_replication_type
     [string] $access_tier
     [string] $copy_scope
-    [string] $feed
-    [string] $hns
-    [string] $infra_encrypt
+    [bool] $feed
+    [bool] $hns
+    [bool] $infra_encrypt
     [string] $kind
-    [string] $nfs
+    [bool] $nfs
     [string] $routing
-    [string] $sftp
+    [bool] $sftp
     [string] $tls
-    [string] $versioning
+    [bool] $versioning
     [string] $pep_subnet
     [string] $pep_vnet
     [string] $vnet_rg
     [string] $static_website_enabled
 }
 
-Export-ModuleMember -Function CalculateStorageAccountName 
-
-
-
-
-
-
-terraform code
-#Last Modification 12/02/2024
-#Created by NTT Cloud Team
-
-variable "location" {
-  type = string
-  description = "azure region"
-}
-variable "resource_group_name" {
-    type = string
-    description = "Resource Group Name"
-}
-
-variable "StorageAccounts" {
-  type = map(object({
-    name = string
-    account_tier = string
-    account_replication_type = string
-    kind = string
-    tls           = string
-    copy_scope    = string
-    hns           = bool
-    sftp          = bool
-    nfs           = bool
-    access_tier   = string
-    routing       = string
-    infra_encrypt = bool
-    feed                = bool
-    versioning          = bool
-    pep_subnet = string
-    pep_vnet = string
-    vnet_rg = string
-    static_website_enabled = string
-    
-
-  }))
-}
-variable "sto_tags" {
-  type = map(string)
-   description = "Tag values for Storage account provisioning" 
-}
-
-variable "enable_https" {
-  type = bool
-  default = true
-}
-variable "public_access" {
-  type = bool
-  default = false
-}
-variable "sas" {
-  type = bool
-  default = true
-}
-variable "is_manual_connection" {
-  type = bool
-  default = false
-}
-variable "subresource_names" {
-  type = list(string)
-  default = ["blob"]
-}
-
-
-
-
-
-
-
-#Last Modification 12/02/2024
-#Created by NTT Cloud Team
-
-terraform {
-  required_providers {
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 4.0.0"
-    }
-  }
-
-  required_version = ">= 1.1.0"
-      backend "azurerm" {
-  }
-
-}
-
-provider "azurerm" {
-  features {
-    resource_group {
-      prevent_deletion_if_contains_resources = false
-    }
-  }
-}
-
-locals {
-  storage_pe_subresource = {
-    StorageV2         = ["blob"]
-    BlockBlobStorage  = ["blob"]
-    FileStorage       = ["file"]
-  }
-}
-
-data "azurerm_subnet" "subnet" {
-  for_each             = var.StorageAccounts
-  name                 = each.value.pep_subnet
-  virtual_network_name = each.value.pep_vnet
-  resource_group_name  = each.value.vnet_rg
-}
-data "azurerm_virtual_network" "vnet" {
-  for_each            = var.StorageAccounts
-  name                = each.value.pep_vnet
-  resource_group_name = each.value.vnet_rg
-}
-
-
-resource "azurerm_storage_account" "sa" {
-  for_each                          = var.StorageAccounts
-  name                              = each.value.name
-  resource_group_name               = var.resource_group_name
-  location                          = var.location
-  account_tier                      = each.value.account_tier             // sku for the storage account possible values are "Standard" & "Premium"
-  account_replication_type          = each.value.account_replication_type // Replication option for storage account, possible values are "LRS","GRS" & "ZRS"
-  account_kind                      = each.value.kind                     // defines the kind of storage account possible values are "StorageV2" & "BlockBlobStorage"
-
-  # Only set access_tier for Standard/StorageV2
-  access_tier = (each.value.account_tier == "Standard" && each.value.kind == "StorageV2") ? each.value.access_tier : null
-
-  public_network_access_enabled     = true
-  shared_access_key_enabled         = true
-  min_tls_version                   = each.value.tls
-  allowed_copy_scope                = each.value.copy_scope    // scope of copy operation for storage account, possible values are "AAD" & "Privatelink"
-  is_hns_enabled                    = each.value.hns
-  sftp_enabled                      = each.value.sftp
-
-  # Only set nfsv3_enabled for Premium/FileStorage
-  nfsv3_enabled = (each.value.account_tier == "Premium" && each.value.kind == "FileStorage") ? each.value.nfs : null
-
-  infrastructure_encryption_enabled = each.value.infra_encrypt // Infrastructure encryption required or not, possible values are true or false
-  dynamic "static_website" {
-    for_each = (each.value.account_tier == "Standard" && each.value.kind == "StorageV2" && try(each.value.static_website_enabled, false)) ? [1] : []
-    content {
-      index_document     = "index.html"
-      error_404_document = "404.html"
-    }
-  }
-
-  dynamic "routing" {
-    for_each = (
-      each.value.kind == "StorageV2" || each.value.kind == "BlockBlobStorage"
-    ) ? [1] : []
-    content {
-      choice = each.value.routing
-    }
-  }
-
-  dynamic "blob_properties" {
-    for_each = (
-      each.value.kind == "StorageV2"
-      || each.value.kind == "BlobStorage"
-      || each.value.kind == "BlockBlobStorage"
-    ) ? [1] : []
-    content {
-      delete_retention_policy {
-        days = 7
-      }
-      versioning_enabled  = each.value.versioning
-      change_feed_enabled = each.value.feed
-      container_delete_retention_policy {
-        days = 7
-      }
-    }
-  }
-
-
-  tags = var.sto_tags
-
-}
-
-resource "azurerm_private_endpoint" "pep" {
-  for_each            = var.StorageAccounts
-  name                = "${azurerm_storage_account.sa[each.key].name}_pep"
-  resource_group_name = var.resource_group_name
-  location            = var.location
-  subnet_id           = data.azurerm_subnet.subnet[each.key].id
-  private_service_connection {
-    name                           = "${azurerm_storage_account.sa[each.key].name}-pecon" // private service connection name with suffix pecon
-    private_connection_resource_id = azurerm_storage_account.sa[each.key].id              // storage account ID for each storage account created
-    is_manual_connection           = false
-    subresource_names = lookup(local.storage_pe_subresource, each.value.kind, ["blob"])
-  }
-  tags = var.sto_tags
-}
-
-
-
+Export-ModuleMember -Function CalculateStorageAccountName
