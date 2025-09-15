@@ -1,408 +1,181 @@
+# Last Modification 12/02/2024
+# Created by NTT Cloud Team
 
-
-
-The `azurerm_app_service` data source has been superseded by the
-Error: Missing required argument
-`azurerm_linux_function_app` and `azurerm_windows_web_app` data sources.
-
-Whilst this resource will continue to be available in the 2.x and 3.x
-  with provider["registry.terraform.io/hashicorp/azurerm"],
-releases it is feature-frozen for compatibility purposes, will no longer
-  on <empty> line 0:
-receive any updates and will be removed in a future major release of the
-  (source code not available)
-Azure Provider.
-
-The argument "features" is required, but no definition was found.
-
-Error: Cannot apply incomplete plan
-
-
-above is the error, can you update my code?
-
-resource “azurerm_public_ip” “public_ip” {
-
-for_each            = var.AppGateway
-
-name                = “${each.value.application_gateway_name}_pip”
-
-location            = each.value.az_region
-
-resource_group_name = var.resource_group_name
-
-allocation_method   = var.allocation_method
-
-sku                 = var.sku
-
-zones = local.zone_list[each.key]
-
-tags  = var.AppGateway_tags
-
+terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.0.0"
+    }
+  }
+  required_version = ">= 1.1.0"
+  
+  backend "azurerm" {}
 }
 
-resource “azurerm_web_application_firewall_policy” “firewall_policy” {
-
-for_each            = var.AppGateway
-
-name                = each.value.firewall_policy_name
-
-resource_group_name = var.resource_group_name
-
-location            = var.location
-
-policy_settings {
-
-mode = “Prevention”
-
+provider "azurerm" {
+  features {
+    resource_group {
+      prevent_deletion_if_contains_resources = false
+    }
+  }
 }
 
-managed_rules {
-
-managed_rule_set {
-
-type    = “OWASP”
-
-version = “3.2”
-
+locals {
+  storage_pe_subresource = {
+    StorageV2         = ["blob"]
+    BlockBlobStorage  = ["blob"]
+    FileStorage       = ["file"]
+  }
+  
+  # Validate storage account names
+  storage_accounts_validated = {
+    for k, v in var.StorageAccounts : k => v
+    if can(regex("^[a-z0-9]{3,24}$", v.name))
+  }
 }
 
+data "azurerm_subnet" "subnet" {
+  for_each             = local.storage_accounts_validated
+  name                 = each.value.pep_subnet
+  virtual_network_name = each.value.pep_vnet
+  resource_group_name  = each.value.vnet_rg
 }
 
-tags = var.AppGateway_tags
-
+data "azurerm_virtual_network" "vnet" {
+  for_each            = local.storage_accounts_validated
+  name                = each.value.pep_vnet
+  resource_group_name = each.value.vnet_rg
 }
 
-resource “azurerm_application_gateway” “agw” {
+resource "azurerm_storage_account" "sa" {
+  for_each                          = local.storage_accounts_validated
+  name                              = each.value.name
+  resource_group_name               = var.resource_group_name
+  location                          = var.location
+  account_tier                      = each.value.account_tier
+  account_replication_type          = each.value.account_replication_type
+  account_kind                      = each.value.kind
 
-for_each            = var.AppGateway
+  # Conditional access_tier - only for Standard StorageV2
+  access_tier = (
+    each.value.account_tier == "Standard" && 
+    each.value.kind == "StorageV2" && 
+    each.value.access_tier != null
+  ) ? each.value.access_tier : null
 
-name                = each.value.application_gateway_name
+  public_network_access_enabled = var.public_access
+  shared_access_key_enabled     = var.sas
+  https_traffic_only_enabled    = var.enable_https
+  min_tls_version               = each.value.tls
+  allowed_copy_scope            = each.value.copy_scope != "" ? each.value.copy_scope : null
+  is_hns_enabled                = each.value.hns
+  sftp_enabled                  = each.value.sftp
 
-location            = each.value.az_region
+  # Conditional nfsv3_enabled - only for Premium FileStorage
+  nfsv3_enabled = (
+    each.value.account_tier == "Premium" && 
+    each.value.kind == "FileStorage"
+  ) ? each.value.nfs : null
 
-resource_group_name = var.resource_group_name
+  infrastructure_encryption_enabled = each.value.infra_encrypt
 
-enable_http2        = each.value.HTTP2 == “Enabled” ? true : false
+  # Static website - only for Standard StorageV2
+  dynamic "static_website" {
+    for_each = (
+      each.value.account_tier == "Standard" && 
+      each.value.kind == "StorageV2" && 
+      each.value.static_website_enabled == "true"
+    ) ? [1] : []
+    
+    content {
+      index_document     = "index.html"
+      error_404_document = "404.html"
+    }
+  }
 
-zones               = local.zone_list[each.key]
+  # Routing - for StorageV2 and BlockBlobStorage
+  dynamic "routing" {
+    for_each = (
+      each.value.kind == "StorageV2" || 
+      each.value.kind == "BlockBlobStorage"
+    ) ? [1] : []
+    
+    content {
+      choice = each.value.routing
+    }
+  }
 
-sku {
+  # Blob properties - for blob-supporting kinds
+  dynamic "blob_properties" {
+    for_each = (
+      each.value.kind == "StorageV2" ||
+      each.value.kind == "BlobStorage" ||
+      each.value.kind == "BlockBlobStorage"
+    ) ? [1] : []
+    
+    content {
+      versioning_enabled  = each.value.versioning
+      change_feed_enabled = each.value.feed
+      
+      delete_retention_policy {
+        days = 7
+      }
+      
+      container_delete_retention_policy {
+        days = 7
+      }
+    }
+  }
 
-name     = each.value.tier
+  tags = var.sto_tags
 
-tier     = each.value.tier
-
-capacity = each.value.capacity_type == “Manual” ? each.value.manual_instance_count : null
-
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [
+      tags["Launch_Date"]
+    ]
+  }
 }
 
-#Only create an autoscale_configuration block if the capacity_type is “Autoscale”
+resource "azurerm_private_endpoint" "pep" {
+  for_each            = local.storage_accounts_validated
+  name                = "${azurerm_storage_account.sa[each.key].name}-pep"
+  resource_group_name = var.resource_group_name
+  location            = var.location
+  subnet_id           = data.azurerm_subnet.subnet[each.key].id
 
-dynamic “autoscale_configuration” {
+  private_service_connection {
+    name                           = "${azurerm_storage_account.sa[each.key].name}-pecon"
+    private_connection_resource_id = azurerm_storage_account.sa[each.key].id
+    is_manual_connection           = var.is_manual_connection
+    subresource_names              = lookup(local.storage_pe_subresource, each.value.kind, var.subresource_names)
+  }
 
-for_each = each.value.capacity_type == “Autoscale” ? [each.value] : []
-
-content {
-
-min_capacity = each.value.autoscale_min_instance_count
-
-max_capacity = each.value.autoscale_max_instance_count
-
+  tags = var.sto_tags
 }
 
+# Outputs for reference
+output "storage_accounts" {
+  description = "Created storage accounts"
+  value = {
+    for k, v in azurerm_storage_account.sa : k => {
+      id                  = v.id
+      name                = v.name
+      primary_access_key  = v.primary_access_key
+      connection_string   = v.primary_connection_string
+    }
+  }
+  sensitive = true
 }
 
-Attach WAF Policy only if tier is “WAF_v2”
-firewall_policy_id = each.value.tier == “WAF_v2” ? azurerm_web_application_firewall_policy.firewall_policy[each.key].id : null
-
-gateway_ip_configuration {
-
-name      = “${each.value.application_gateway_name}_ipconfig”
-
-subnet_id = data.azurerm_subnet.subnet[each.key].id
-
+output "private_endpoints" {
+  description = "Created private endpoints"
+  value = {
+    for k, v in azurerm_private_endpoint.pep : k => {
+      id   = v.id
+      name = v.name
+      private_service_connection = v.private_service_connection[0].private_ip_address
+    }
+  }
 }
-
-frontend_ip_configuration {
-
-name                 = “${each.value.application_gateway_name}_frontend_public”
-
-public_ip_address_id = azurerm_public_ip.public_ip[each.key].id
-
-}
-
-Private IP Configuration (Only included if create_ip is “both”)
-dynamic “frontend_ip_configuration” {
-
-for_each = each.value.frontend_ip == “both” ? [1] : []
-
-content {
-
-name                          = “${each.value.application_gateway_name}_frontend_private”
-
-subnet_id                     = data.azurerm_subnet.subnet[each.key].id
-
-private_ip_address_allocation = var.allocation_method
-
-private_ip_address            = each.value.private_ip_address
-
-}
-
-}
-
-frontend_port {
-
-name = “frontendPort”
-
-port = each.value.port
-
-}
-
-ssl_certificate {
-
-name                = each.value.cert_name
-
-key_vault_secret_id = data.azurerm_key_vault_certificate.certificate[each.key].versionless_secret_id
-
-}
-
-http_listener {
-
-name                           = each.value.listener_name
-
-frontend_ip_configuration_name = each.value.frontend_ip == “public” ? “
-e
-a
-c
-h
-.
-v
-a
-l
-u
-e
-.
-a
-p
-p
-l
-i
-c
-a
-t
-i
-o
-n
-g
-a
-t
-e
-w
-a
-y
-n
-a
-m
-e
-f
-r
-o
-n
-t
-e
-n
-d
-p
-u
-b
-l
-i
-c
-"
-:
-"
-each.value.application 
-g
-​
- ateway 
-n
-​
- ame 
-f
-​
- rontend 
-p
-​
- ublic":"{each.value.application_gateway_name}_frontend_private”
-
-frontend_port_name             = “frontendPort”
-
-protocol                       = var.listener_protocol
-
-host_name                      = length(each.value.hostname) > 0 ? each.value.hostname : null
-
-ssl_certificate_name           = each.value.cert_name
-
-}
-
-Backend Address Pool (Supports Both VM IPs & FQDNs)
-backend_address_pool {
-
-name = each.value.backend_pool_name
-
-}
-
-Backend Pools from IPs
-dynamic “backend_address_pool” {
-
-for_each = try(each.value.backend_pools_ip, {})
-
-content {
-
-name         = backend_address_pool.key
-
-ip_addresses = backend_address_pool.value
-
-}
-
-}
-
-Backend Pools from FQDNs
-dynamic “backend_address_pool” {
-
-for_each = try(each.value.backend_pools_fqdn, {})
-
-content {
-
-name  = backend_address_pool.key
-
-fqdns = backend_address_pool.value
-
-}
-
-}
-
-Backend Pools from VMs
-dynamic “backend_address_pool” {
-
-for_each = try(each.value.backend_pools_vm, {})
-
-content {
-
-name         = backend_address_pool.key
-
-ip_addresses = [
-
-for vm in backend_address_pool.value :
-
-data.azurerm_network_interface.vm_nics[“{each.key}_{backend_address_pool.key}_${vm}”].private_ip_address
-
-]
-
-}
-
-}
-
-Backend Pools from App Services
-dynamic “backend_address_pool” {
-
-for_each = try(each.value.backend_pools_appservice, {})
-
-content {
-
-name  = backend_address_pool.key
-
-fqdns = [
-
-for app in backend_address_pool.value :
-
-data.azurerm_app_service.app_services[“{each.key}_{backend_address_pool.key}_${app}”].default_site_hostname
-
-]
-
-}
-
-}
-
-backend_http_settings {
-
-name                  = each.value.backend_settings_name
-
-cookie_based_affinity = “Disabled”
-
-port                  = each.value.port
-
-protocol              = var.listener_protocol
-
-request_timeout       = 60
-
-}
-
-request_routing_rule {
-
-name                       = each.value.rule_name
-
-rule_type                  = var.rule_type
-
-http_listener_name         = each.value.listener_name
-
-backend_address_pool_name  = each.value.backend_pool_name
-
-backend_http_settings_name = each.value.backend_settings_name
-
-priority                   = 100
-
-}
-
-identity {
-
-type         = “UserAssigned”
-
-identity_ids = [data.azurerm_user_assigned_identity.identity[each.key].id]
-
-}
-
-tags = var.AppGateway_tags
-
-}
-
-data “azurerm_app_service” “app_services” {
-
-for_each = {
-
-for item in flatten([
-
-for gw_key, gw in var.AppGateway : [
-
-for app_pool_key, app_names in gw.backend_pools_appservice : [
-
-for app in app_names : {
-
-key   = “{gw_key}_{app_pool_key}_${app}”
-
-name  = app
-
-rg    = var.resource_group_name
-
-}
-
-]
-
-]
-
-]) : item.key => {
-
-name                = item.name
-
-resource_group_name = item.rg
-
-}
-
-}
-
-name                = each.value.name
-
-resource_group_name = each.value.resource_group_name
-
-}
-
